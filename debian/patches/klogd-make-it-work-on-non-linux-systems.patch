@@ -183,7 +183,7 @@ index c54e80a..3468656 100644
  int klogd_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
  int klogd_main(int argc UNUSED_PARAM, char **argv)
  {
-@@ -55,34 +143,34 @@ int klogd_main(int argc UNUSED_PARAM, char **argv)
+@@ -55,34 +143,35 @@ int klogd_main(int argc UNUSED_PARAM, char **argv)
  		bb_daemonize_or_rexec(DAEMON_CHDIR_ROOT, argv);
  	}
  
@@ -207,8 +207,9 @@ index c54e80a..3468656 100644
 -		klogctl(8, NULL, i);
 +		klogd_setloglevel(i);
 +
-+	bb_signals(BB_FATAL_SIGS, record_signo);
 +	signal(SIGHUP, SIG_IGN);
++	/* We want klogd_read to not be restarted, thus _norestart: */
++	bb_signals_recursive_norestart(BB_FATAL_SIGS, record_signo);
  
  	syslog(LOG_NOTICE, "klogd started: %s", bb_banner);
  
