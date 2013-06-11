@@ -31,3 +31,4 @@ swaponoff-FreeBSD-support.patch
 
 # not sent upstream
 init-console-CRTSCTS.patch
+CVE-2011-2716.pacth

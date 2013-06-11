@@ -1,3 +1,9 @@
+busybox (1:1.17.1-8skerlet2) unstable; urgency=low
+
+  * Fix CVE-2011-2716.
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Tue, 11 Jun 2013 14:39:34 +0900
+
 busybox (1:1.17.1-8skerlet1) unstable; urgency=low
 
   * Fix klogd temination. This patch is applied in 1.18 upstream.
