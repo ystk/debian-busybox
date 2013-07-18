@@ -32,3 +32,4 @@ swaponoff-FreeBSD-support.patch
 # not sent upstream
 init-console-CRTSCTS.patch
 CVE-2011-2716.pacth
+fix-improper-size-calc-for-OPTION_STRING_HOST.patch

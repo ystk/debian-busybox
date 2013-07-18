@@ -1,3 +1,10 @@
+busybox (1:1.17.1-8skerlet3) unstable; urgency=low
+
+  * Fix improper size calclation for OPTION_STRING_HOST
+    This fix is also required to fix CVE-2011-2716.
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Fri, 19 Jul 2013 01:32:35 +0900
+
 busybox (1:1.17.1-8skerlet2) unstable; urgency=low
 
   * Fix CVE-2011-2716.
