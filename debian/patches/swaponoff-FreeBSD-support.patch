@@ -6,48 +6,26 @@ Subject: [PATCH 19/19] swaponoff: FreeBSD support
 
 Signed-off-by: Jeremie Koenig <jk@jk.fr.eu.org>
 ---
- util-linux/Config.src  |    3 +--
- util-linux/swaponoff.c |    6 +++---
+ util-linux/swaponoff.c |    9 +++------
  util-linux/xmount.c    |   10 ++++++++++
  util-linux/xmount.h    |   16 ++++++++++------
- 4 files changed, 24 insertions(+), 11 deletions(-)
+ 3 files changed, 23 insertions(+), 12 deletions(-)
 
-diff --git a/util-linux/Config.src b/util-linux/Config.src
-index 99a6fbe..cb4de95 100644
---- a/util-linux/Config.src
-+++ b/util-linux/Config.src
-@@ -639,7 +639,6 @@ config SETARCH
- config SWAPONOFF
- 	bool "swaponoff"
- 	default y
--	depends on PLATFORM_LINUX
- 	help
- 	  This option enables both the 'swapon' and the 'swapoff' utilities.
- 	  Once you have created some swap space using 'mkswap', you also need
-@@ -651,7 +650,7 @@ config SWAPONOFF
- config FEATURE_SWAPON_PRI
- 	bool "Support priority option -p"
- 	default y
--	depends on SWAPONOFF
-+	depends on SWAPONOFF && PLATFORM_LINUX
- 	help
- 	  Enable support for setting swap device priority in swapon.
- 
-diff --git a/util-linux/swaponoff.c b/util-linux/swaponoff.c
-index f2f52fb..d13c37e 100644
 --- a/util-linux/swaponoff.c
 +++ b/util-linux/swaponoff.c
-@@ -8,8 +8,8 @@
-  */
+@@ -23,10 +23,8 @@
+ //usage:     "\n	-a	Stop swapping on all swap devices"
  
  #include "libbb.h"
 +#include "xmount.h"
  #include <mntent.h>
--#include <sys/swap.h>
+-#ifndef __BIONIC__
+-# include <sys/swap.h>
+-#endif
  
  #if ENABLE_FEATURE_MOUNT_LABEL
  # include "volume_id.h"
-@@ -43,9 +43,9 @@ static int swap_enable_disable(char *device)
+@@ -65,9 +63,9 @@ static int swap_enable_disable(char *dev
  #endif
  
  	if (applet_name[5] == 'n')
@@ -59,11 +37,9 @@ index f2f52fb..d13c37e 100644
  
  	if (status != 0) {
  		bb_simple_perror_msg(device);
-diff --git a/util-linux/xmount.c b/util-linux/xmount.c
-index 3f322b8..16543f1 100644
 --- a/util-linux/xmount.c
 +++ b/util-linux/xmount.c
-@@ -63,4 +63,14 @@ int FAST_FUNC xumount(const char *target, int flags)
+@@ -67,4 +67,14 @@ int FAST_FUNC xumount(const char *target
  	return unmount(target, flags);
  }
  
@@ -78,8 +54,6 @@ index 3f322b8..16543f1 100644
 +}
 +
  #endif
-diff --git a/util-linux/xmount.h b/util-linux/xmount.h
-index caef564..bcd6d18 100644
 --- a/util-linux/xmount.h
 +++ b/util-linux/xmount.h
 @@ -5,9 +5,9 @@
@@ -109,9 +83,9 @@ index caef564..bcd6d18 100644
  # include <sys/mount.h>
 +# include <sys/swap.h>
  # define MS_NOSUID      MNT_NOSUID
- # define MS_NODEV       MNT_NODEV
- # define MS_NOEXEC      MNT_NOEXEC
-@@ -82,16 +84,18 @@
+ # ifdef MNT_NODEV
+ #  define MS_NODEV	MNT_NODEV
+@@ -86,16 +88,18 @@
  #endif
  
  /*
@@ -133,6 +107,3 @@ index caef564..bcd6d18 100644
 +int xswapon(const char *path, int swapflags) FAST_FUNC;
 +int xswapoff(const char *path) FAST_FUNC;
  #endif
--- 
-1.7.1
-

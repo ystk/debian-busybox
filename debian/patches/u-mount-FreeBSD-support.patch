@@ -1,55 +1,24 @@
-From 5a075618b1deb735a6170e322052c7ba54b17d9e Mon Sep 17 00:00:00 2001
-From: Jeremie Koenig <jk@jk.fr.eu.org>
+Based on patch described below, refreshed by mjt for 1.18.3
+and again for 1.19.3.
+
 Date: Thu, 29 Jul 2010 21:16:09 +0200
 Subject: [PATCH 18/19] (u)mount: FreeBSD support
 
-
 Signed-off-by: Jeremie Koenig <jk@jk.fr.eu.org>
 ---
- util-linux/Config.src |    4 +--
- util-linux/Kbuild.src |    4 +-
- util-linux/mount.c    |   41 ++-------------------
- util-linux/umount.c   |   41 +++------------------
- util-linux/xmount.c   |   66 +++++++++++++++++++++++++++++++++
- util-linux/xmount.h   |   97 +++++++++++++++++++++++++++++++++++++++++++++++++
- 6 files changed, 174 insertions(+), 79 deletions(-)
+ util-linux/Config.src |    3 -
+ util-linux/Kbuild.src |    4 -
+ util-linux/mount.c    |   41 +-------------------
+ util-linux/umount.c   |    8 +--
+ util-linux/xmount.c   |   70 ++++++++++++++++++++++++++++++++++
+ util-linux/xmount.h   |  101 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 181 insertions(+), 46 deletions(-)
  create mode 100644 util-linux/xmount.c
  create mode 100644 util-linux/xmount.h
 
-diff --git a/util-linux/Config.src b/util-linux/Config.src
-index 98953c1..99a6fbe 100644
---- a/util-linux/Config.src
-+++ b/util-linux/Config.src
-@@ -492,7 +492,6 @@ config FEATURE_USE_TERMIOS
- config MOUNT
- 	bool "mount"
- 	default y
--	depends on PLATFORM_LINUX
- 	help
- 	  All files and filesystems in Unix are arranged into one big directory
- 	  tree. The 'mount' utility is used to graft a filesystem onto a
-@@ -679,7 +678,6 @@ config SWITCH_ROOT
- config UMOUNT
- 	bool "umount"
- 	default y
--	depends on PLATFORM_LINUX
- 	help
- 	  When you want to remove a mounted filesystem from its current mount
- 	  point, for example when you are shutting down the system, the
-@@ -699,7 +697,7 @@ comment "Common options for mount/umount"
- config FEATURE_MOUNT_LOOP
- 	bool "Support loopback mounts"
- 	default y
--	depends on MOUNT || UMOUNT
-+	depends on (MOUNT || UMOUNT) && PLATFORM_LINUX
- 	help
- 	  Enabling this feature allows automatic mounting of files (containing
- 	  filesystem images) via the linux kernel's loopback devices.
-diff --git a/util-linux/Kbuild.src b/util-linux/Kbuild.src
-index afc0db5..312fc9e 100644
 --- a/util-linux/Kbuild.src
 +++ b/util-linux/Kbuild.src
-@@ -33,7 +33,7 @@ lib-$(CONFIG_MKFS_REISER)       += mkfs_reiser.o
+@@ -32,7 +32,7 @@ lib-$(CONFIG_MKFS_REISER)       += mkfs_
  lib-$(CONFIG_MKFS_VFAT)         += mkfs_vfat.o
  lib-$(CONFIG_MKSWAP)            += mkswap.o
  lib-$(CONFIG_MORE)              += more.o
@@ -58,18 +27,16 @@ index afc0db5..312fc9e 100644
  lib-$(CONFIG_PIVOT_ROOT)        += pivot_root.o
  lib-$(CONFIG_RDATE)             += rdate.o
  lib-$(CONFIG_RDEV)              += rdev.o
-@@ -44,4 +44,4 @@ lib-$(CONFIG_SCRIPTREPLAY)      += scriptreplay.o
+@@ -43,4 +43,4 @@ lib-$(CONFIG_SCRIPTREPLAY)      += scrip
  lib-$(CONFIG_SETARCH)           += setarch.o
  lib-$(CONFIG_SWAPONOFF)         += swaponoff.o
  lib-$(CONFIG_SWITCH_ROOT)       += switch_root.o
 -lib-$(CONFIG_UMOUNT)            += umount.o
 +lib-$(CONFIG_UMOUNT)            += umount.o xmount.o
-diff --git a/util-linux/mount.c b/util-linux/mount.c
-index 9107e43..a62c4e8 100644
 --- a/util-linux/mount.c
 +++ b/util-linux/mount.c
-@@ -18,44 +18,9 @@
- //
+@@ -77,44 +77,9 @@
+ 
  #include <mntent.h>
  #include <syslog.h>
 -#include <sys/mount.h>
@@ -114,7 +81,7 @@ index 9107e43..a62c4e8 100644
  #if ENABLE_FEATURE_MOUNT_LABEL
  # include "volume_id.h"
  #else
-@@ -288,7 +253,7 @@ static int verbose_mount(const char *source, const char *target,
+@@ -405,7 +370,7 @@ static int verbose_mount(const char *sou
  	int rc;
  
  	errno = 0;
@@ -123,7 +90,7 @@ index 9107e43..a62c4e8 100644
  	if (verbose >= 2)
  		bb_perror_msg("mount('%s','%s','%s',0x%08lx,'%s'):%d",
  			source, target, filesystemtype,
-@@ -296,7 +261,7 @@ static int verbose_mount(const char *source, const char *target,
+@@ -413,7 +378,7 @@ static int verbose_mount(const char *sou
  	return rc;
  }
  #else
@@ -132,54 +99,19 @@ index 9107e43..a62c4e8 100644
  #endif
  
  // Append mount options to string
-diff --git a/util-linux/umount.c b/util-linux/umount.c
-index a19f86c..781e019 100644
 --- a/util-linux/umount.c
 +++ b/util-linux/umount.c
-@@ -8,40 +8,9 @@
-  * Licensed under GPL version 2, see file LICENSE in this tarball for details.
-  */
+@@ -29,8 +29,8 @@
+ //usage:       "$ umount /dev/hdc1\n"
+ 
  #include <mntent.h>
 -#include <sys/mount.h>
--/* Make sure we have all the new mount flags we actually try to use. */
--#ifndef MS_BIND
--# define MS_BIND        (1 << 12)
--#endif
--#ifndef MS_MOVE
--# define MS_MOVE        (1 << 13)
--#endif
--#ifndef MS_RECURSIVE
--# define MS_RECURSIVE   (1 << 14)
--#endif
--#ifndef MS_SILENT
--# define MS_SILENT      (1 << 15)
--#endif
--/* The shared subtree stuff, which went in around 2.6.15. */
--#ifndef MS_UNBINDABLE
--# define MS_UNBINDABLE  (1 << 17)
--#endif
--#ifndef MS_PRIVATE
--# define MS_PRIVATE     (1 << 18)
--#endif
--#ifndef MS_SLAVE
--# define MS_SLAVE       (1 << 19)
--#endif
--#ifndef MS_SHARED
--# define MS_SHARED      (1 << 20)
--#endif
--#ifndef MS_RELATIME
--# define MS_RELATIME    (1 << 21)
--#endif
-+
  #include "libbb.h"
--#ifndef PATH_MAX
--# define PATH_MAX (4*1024)
--#endif
-+#include "xmount.h"
- 
++# include "xmount.h"
  
  #if defined(__dietlibc__)
-@@ -154,11 +123,11 @@ int umount_main(int argc UNUSED_PARAM, char **argv)
+ // TODO: This does not belong here.
+@@ -148,11 +148,11 @@ int umount_main(int argc UNUSED_PARAM, c
  		if (m) zapit = m->dir;
  
  		// Let's ask the thing nicely to unmount.
@@ -193,7 +125,7 @@ index a19f86c..781e019 100644
  
  		// If still can't umount, maybe remount read-only?
  		if (curstat) {
-@@ -166,7 +135,7 @@ int umount_main(int argc UNUSED_PARAM, char **argv)
+@@ -160,7 +160,7 @@ int umount_main(int argc UNUSED_PARAM, c
  				// Note! Even if we succeed here, later we should not
  				// free loop device or erase mtab entry!
  				const char *msg = "%s busy - remounted read-only";
@@ -202,9 +134,6 @@ index a19f86c..781e019 100644
  				if (curstat) {
  					msg = "can't remount %s read-only";
  					status = EXIT_FAILURE;
-diff --git a/util-linux/xmount.c b/util-linux/xmount.c
-new file mode 100644
-index 0000000..3f322b8
 --- /dev/null
 +++ b/util-linux/xmount.c
 @@ -0,0 +1,70 @@
@@ -250,25 +179,25 @@ index 0000000..3f322b8
 +{
 +	struct iovec *iov = NULL;
 +	int iovlen = 0;
-+	char *fspath, *from;
++	char *fspath /*, *from*/;
 +	int ret;
 +
 +	fspath = realpath(target, NULL);
-+	from = realpath(source, NULL);
++	/* from = realpath(source, NULL); -- think `nodev' here */
 +
 +	build_iovec(&iov, &iovlen, "fstype", (void*)filesystemtype, (size_t)-1);
 +	build_iovec(&iov, &iovlen, "fspath", fspath, (size_t)-1);
 +	if (!strcmp(filesystemtype, "nullfs"))
 +		/* nullfs uses a "target" instead of "from" */
-+		build_iovec(&iov, &iovlen, "target", from, (size_t)-1);
++		build_iovec(&iov, &iovlen, "target", source, (size_t)-1);
 +	else
-+		build_iovec(&iov, &iovlen, "from", from, (size_t)-1);
++		build_iovec(&iov, &iovlen, "from", source, (size_t)-1);
 +
 +	ret = nmount(iov, iovlen, mountflags);
 +
-+	free(from);
++	/*free(from);*/
 +	free(fspath);
-+	
++
 +	return ret;
 +}
 +
@@ -278,12 +207,9 @@ index 0000000..3f322b8
 +}
 +
 +#endif
-diff --git a/util-linux/xmount.h b/util-linux/xmount.h
-new file mode 100644
-index 0000000..caef564
 --- /dev/null
 +++ b/util-linux/xmount.h
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,101 @@
 +/* vi: set sw=4 ts=4: */
 +/*
 + * System-specific definitions for mount.
@@ -343,7 +269,11 @@ index 0000000..caef564
 +#elif defined(__FreeBSD_kernel__)
 +# include <sys/mount.h>
 +# define MS_NOSUID      MNT_NOSUID
-+# define MS_NODEV       MNT_NODEV
++# ifdef MNT_NODEV
++#  define MS_NODEV	MNT_NODEV
++# else
++#  define MS_NODEV	0
++# endif
 +# define MS_NOEXEC      MNT_NOEXEC
 +# define MS_SYNCHRONOUS MNT_SYNCHRONOUS
 +# define MS_DIRSYNC     0
@@ -381,6 +311,29 @@ index 0000000..caef564
 +		unsigned long mountflags, const void *data) FAST_FUNC;
 +int xumount(const char *target, int flags) FAST_FUNC;
 +#endif
--- 
-1.7.1
-
+--- a/util-linux/Config.src
++++ b/util-linux/Config.src
+@@ -437,7 +437,6 @@ config MORE
+ config MOUNT
+ 	bool "mount"
+ 	default y
+-	select PLATFORM_LINUX
+ 	help
+ 	  All files and filesystems in Unix are arranged into one big directory
+ 	  tree. The 'mount' utility is used to graft a filesystem onto a
+@@ -629,7 +628,6 @@ config SWITCH_ROOT
+ config UMOUNT
+ 	bool "umount"
+ 	default y
+-	select PLATFORM_LINUX
+ 	help
+ 	  When you want to remove a mounted filesystem from its current mount
+ 	  point, for example when you are shutting down the system, the
+@@ -650,6 +648,7 @@ config FEATURE_MOUNT_LOOP
+ 	bool "Support loopback mounts"
+ 	default y
+ 	depends on MOUNT || UMOUNT
++	select PLATFORM_LINUX
+ 	help
+ 	  Enabling this feature allows automatic mounting of files (containing
+ 	  filesystem images) via the linux kernel's loopback devices.

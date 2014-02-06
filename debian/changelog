@@ -1,8 +1,460 @@
-busybox (1:1.17.1-8skerlet1) unstable; urgency=low
+busybox (1:1.20.0-7) unstable; urgency=low
 
-  * Fix klogd temination. This patch is applied in 1.18 upstream.
+  * set CONFIG_FEATURE_COPYBUF_KB from 4 to 64 for all flavours.  This
+    increases speed of various applets *dramatically*.  For example, wget
+    applet downlad time for certain file decreased from 3.8sec to 0.6sec.
+  * modprobe-read-modules-builtin.patch: stop modprobe from complaining
+    when asked to load a "module" which is built-in.  Thank you
+    Ben Hutchings for the patch. (Closes: #652672)
+  * udeb: enable ping6 applet and FEATURE_FANCY_PING - more featureful
+    ping(6) variant with statistics et al.  This makes ping6 available in
+    d-i (initial network debugging), and makes ping there not only more
+    useful but also using a more tested code, as used in other variants.
+    4Kb file size increase on i386.
+  * stop-checking-ancient-kernel-version.patch: a rather trivial patch
+    to disable compatibility code for kernels <2.2.18 in nfs mount.
+    This was the only place in debian busybox which used
+    get_linux_version_code() function which was buggy on kernels with
+    less than 3 components version number.  So instead of fixing that
+    function, we got rid of the last user of it.  (Closes: #684611)
 
- -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Thu, 26 Apr 2012 01:49:42 +0000
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 20 Sep 2012 10:32:55 +0400
+
+busybox (1:1.20.0-6) unstable; urgency=low
+
+  * reorder patches in debian/patches/series: all upstream first,
+    debian-specific next.  cmp(1) shows no changes in the resulting
+    sources (after applying patches both ways)
+  * dont-force-no-alignment-for-s390.patch: do not use ALIGN* macros
+    on s390 and s390x because gcc generates wrong code (for wrong
+    declarations).  No effect for anything but s390(x), where the
+    resulting package does not work anyway. (Closes: 681760)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 22 Jul 2012 12:30:02 +0400
+
+busybox (1:1.20.0-5) unstable; urgency=low
+
+  * enable various xargs features for all flavours, to make it work
+    as POSIX requires (notable quotes and backslash processing).
+    Also enable -0 option, apparently forgotten at the time (it
+    complements find -print0 which is enabled).  (Closes: #680342)
+  * replace my ps-get-uptime.patch with busybox-1.20.1-ps.patch
+    (it is the same patch, just file formatting changed and it
+    is now obvios the patch is applied upstream)
+  * added another upstream bugfix patch, busybox-1.20.1-mke2fs.patch,
+    to fix mkfs.ext2 breakage.  It is only used in static flavour in
+    debian, but producing broken filesystem isn't an option there too.
+  * busybox-1.20.1-1.20.2.patch -- change version to 1.20.2.  This is
+    the only remaining change to upstream 1.20.2 stable release.
+  * enable ping applet for udeb build, +613 bytes on i386.  (Closes: #406114)
+  * update shell-ash-export-HOME.patch - DEP-3 headers and a long
+    description.  This patch now removes "const" modifier from the
+    default PATH variable definition, making it writable.  Full
+    description is within the patch comments. (Closes: #679377)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 08 Jul 2012 01:37:18 +0400
+
+busybox (1:1.20.0-4) unstable; urgency=low
+
+  * ps-get-uptime.patch: make procps/ps.c compilable on non-linux again
+    (Closes: #677254)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Tue, 12 Jun 2012 21:17:52 +0400
+
+busybox (1:1.20.0-3) unstable; urgency=low
+
+  * 1.20 had a few fixes which I forgot to mention:
+    - integer overflow in expression on big endian (Closes: #635370)
+      (I dislike the fix since it makes use of 64bit integers
+      instead of using unsigned 32bit, but this is how upstream
+      fixed it)
+    - CVE-2011-2716 udhcpc insufficient checking of DHCP options (Closes: #635548)
+      busybox dhcpd now replaces values of HOST_NAME, DOMAIN_NAME,
+      NIS_DOMAIN, TFTP_SERVER_NAME with the literal string "bad"
+      if these contains any bad characters.
+  * applied stable patches from upstream (ash, man, ifupdown, tar)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sat, 02 Jun 2012 14:54:04 +0400
+
+busybox (1:1.20.0-2) experimental; urgency=low
+
+  * new 1.20.1 upstream bugfix release (debian/patches/1.20.1.patch),
+    all patches in upstream/ merged
+  * removed reenable-ps-options-for-DESKTOP-case.patch, it was wrong
+    (see https://bugs.busybox.net/show_bug.cgi?id=5216)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Wed, 30 May 2012 12:10:47 +0400
+
+busybox (1:1.20.0-1) experimental; urgency=low
+
+  * new upstream (mostly bugfix) release
+  * got rid of the long-standing debian-specific applets-fallback.patch, once
+    upstream added commit 83f103b30e41ab038e "ash: in standalone mode, search
+    in $PATH if /proc/self/exe doesn't exist".  I still carry the patch itself,
+    but it isn't referenced in the series file anymore.
+  * removed patches which were applied upstream, and added a few patches
+    from upstream 1.20 stable branch
+  * refreshed swaponoff-FreeBSD-support.patch and u-mount-FreeBSD-support.patch
+  * refreshed configs for 1.20
+  * enabled many httpd options (AUTH_MD5, RANGES, SETUID, CGI, GZIP, ENCODE)
+    for static and regular build, which results in ~5Kb binary size difference
+    on x86 but enables features users are asking
+    (Closes: #548999, #626820, #571743)
+  * enabled dpkg-buildflags usage (filtering out -Werror=format-security from
+    CFLAGS) (Closes: #670993)
+  * ship some docs and examples in static and regular builds (Closes: #671832)
+  * enable expand/unexpand and ar-long-options in deb build, - small changes
+    to reduce difference from static config.
+  * added reenable-ps-options-for-DESKTOP-case.patch
+  * DEP-3 headers for init-console.patch
+
+  * releasing to experimental due to applets-fallback.patch removal
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Wed, 16 May 2012 13:47:42 +0400
+
+busybox (1:1.19.3-7) unstable; urgency=low
+
+  * enable stat applet for deb & static
+  * enable less applet for deb ("more" does not quite work)
+    and enable some options for it in static build
+  * enabled a few options for top and ps applets in deb, taken from static
+  * enabled NFS mount (Note: only NFSv2 and v3, not v4, and only on Linux)
+    (Closes: #573056, #348664)
+  * enabled microcom for deb build, taken from static
+  * relaxed the "links" subpackages version dependencies from source:Version
+    to source:Upstream-Version
+  * DISabled some questionable applets from static build,
+    to match regular build:
+   - acpid
+   - fbset (Closes: #310128) -- removing non-functional fbset
+   - adduser, deluser, addgroup, delgroup
+   - fsck_minix, mkfs_minix
+   - eject
+   - makedevs
+   - fdflush
+   - vlock
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Fri, 13 Apr 2012 11:54:16 +0400
+
+busybox (1:1.19.3-6) unstable; urgency=low
+
+  * enable arp applet for static&regular builds
+    (lacking ip neigh)
+  * enable mdev applet for regular build and all
+    options for regular&static builds (it has already
+    been enabled for static)
+  * enable init and halt/poweroff/shutdown applets for
+    all variants and make them consistent.  Also remove
+    mesg applet from static build
+  * enable vconfig applet for regular build, making it
+    consistent with static & udeb
+  * enable hwclock applet for regular & udeb builds, and
+    disable FHS adjtime for static build (to make the
+    location consistent with util-linux)
+  * enable login&getty applets in regular build (the same as for static)
+    (Closes: #523034)
+  * kFreeBSD does not define MNT_NODEV anymore, work around it
+    (Closes: #667530)
+  * apply fix-test-!-segfault.patch from upstream git.  (Closes: #660573)
+  * bump Standards-Version to 3.9.3 (no changes necessary)
+  * simplify debian/rules a bit
+  * mark udhcpc and udhcpd packages as Architecture: linux-any instead of all,
+    since they're really linux-specific for now, which in debian terms means
+    not arch-independent so "all" can't be used.  This means that we'll have
+    uchcpc_i386.deb, udhcpc_mipsel.deb etc so it wastes space in archives,
+    but this should give better _user_ experience.
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 12 Apr 2012 12:15:43 +0400
+
+busybox (1:1.19.3-5) unstable; urgency=low
+
+  * enabled module-init-tools (for 2.6+ kernels, with depmod and modinfo)
+    in all 3 - regular, static and udeb - builds.  Size change on i386:
+
+      text    data     bss     dec     hex filename
+    525121    1779    8984  535884   82d4c busybox(deb)
+    532431    1779    8984  543194   849da busybox(deb)+mit+modinfo
+    534137    1779    8984  544900   85084 busybox(deb)+mit+modinfo+depmod
+    294309    1514    8688  304511   4a57f busybox(udeb)
+    298131    1514    8688  308333   4b46d busybox(udeb)+mit
+    299290    1514    8688  309492   4b8f4 busybox(udeb)+mit+modinfo
+    301397    1518    8688  311603   4c133 busybox(udeb)+mit+modinfo+depmod
+
+    which is about 7Kb (9Kb with depmod) difference for regular deb and
+    5Kb (7Kb with depmod) for udeb.  This is a long-awaited change.
+    (Closes: #288759, #298119, #250047)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Fri, 16 Dec 2011 18:07:43 +0400
+
+busybox (1:1.19.3-4) unstable; urgency=low
+
+  * move the forgotten udeb udhcpc script to /etc/udhcpc too
+    (Closes: #650400)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Wed, 30 Nov 2011 23:28:02 +0400
+
+busybox (1:1.19.3-3) unstable; urgency=low
+
+  [ Otavio Salvador ]
+  * kfreebsd: use xterm terminal type instead of cons25. Thanks to
+    Robert Millan <rmh@debian.org> for the patch. Closes: #647672.
+
+  [ Michael Tokarev ]
+  * added /etc/insserv.conf.d/busybox-syslogd to tell insserv we're
+    providing syslog service.  Closes: #647942
+  * stop canonicalizing "source" argument of mount on FreeBSD, to
+    allow "nodev" filesystems to be mounted.  Closes: #637082
+  * forcibly enable swapon/swapoff on kfreebsd even if these a marked
+    as linux-specific.  Closes: #647287.
+  * revert static-math-overflow-on-big-endian (Reopens: #635370)
+  * move udhcpc default.script from /usr/share/udhcpc back to /etc/udhcpc
+    where it was long time ago.  It may conflict with the same conffile
+    as was in udhcpc package back in lenny, but the scripts from that
+    pkg should continue working still.  Closes: #619114
+  * config changes:
+    + taskset applet (deb & static) (Closes: #624852)
+    + timeout applet (deb)
+    + setsid & cttyhack applets (deb & static) (Closes: #588324)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Wed, 23 Nov 2011 01:13:39 +0400
+
+busybox (1:1.19.3-2) unstable; urgency=low
+
+  * reorder PLATFORM_LINUX changes in debian/rules so that
+    it is possible to have OS-specific config overrides again,
+    which was broken with all this PLATFORM_LINUX mess
+    (Closes: #647287)
+  * added support for unxz (CONFIG_UNXZ) to udeb (+8Kb on i386)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Tue, 01 Nov 2011 20:44:30 +0400
+
+busybox (1:1.19.3-1) unstable; urgency=low
+
+  * another iteration around PLATFORM_LINUX change.
+    Do not remove PLATFORM_LINUX in arch-specific configs,
+    since it does not hide linux-specific options anyway.
+    This should finally fix FTBFS on kfreebsd, and it
+    makes config files exactly the same as they appear
+    on linux platform.
+  * add another patch (sent upstream) to mark modinfo
+    selecting CONFIG_LINUX as all other linux-specific
+    options.  Another FTBFS on kfreebsd and hurd
+  * add a patch (and sent upstream) to use CBAUD definition
+    conditionally in (rewritten in 0.19) getty.c - hurd does
+    not have this #define.  FTBFS on hurd.
+  * updated to upstream 1.19.3 (minor bugfix) release,
+    removing all patches taken from upstream
+  * static-math-overflow-on-big-endian.patch (sent upstream),
+    to fix integer overflow in header on big-endian platform
+    (closes: #635370)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 30 Oct 2011 21:55:22 +0400
+
+busybox (1:1.19.2-4) unstable; urgency=low
+
+  * update non-PLATFORM_LINUX cleanup to take config info
+    stored in source files too (run gen_build_files first)
+  * apply patches from upstream stable branch:
+     busybox-1.19.2-chpasswd.patch
+     busybox-1.19.2-inetd.patch
+     busybox-1.19.2-syslog.patch (closes: #646984)
+     busybox-1.19.2-tail.patch
+     busybox-1.19.2-tftp.patch
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sat, 29 Oct 2011 12:36:44 +0400
+
+busybox (1:1.19.2-3) unstable; urgency=low
+
+  * disable all config options which selects PLATFORM_LINUX
+    on non-linux platforms.  This should fix build problems
+    on kfreebsd and hurd.
+  * add myself to Uploaders.
+  * bump Standards-Version to 3.9.2 (no changes needed)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Fri, 28 Oct 2011 20:42:07 +0400
+
+busybox (1:1.19.2-2) unstable; urgency=low
+
+  * resurrect applets-fallback.patch for now,
+    thank you Stefan Lippers-Hollmann for the rediff.
+    This restores the (broken) initramfs usage
+    (Closes: #646284)
+  * s/XC-Package-Type/Package-Type/ in debian/control (lintian)
+  * add default build, build-arch and build-indep targets
+    to debian/rules (lintian), and remove old maintainerclean
+  * forgotten for 1.19: (Closes: #450895)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 23 Oct 2011 02:47:35 +0400
+
+busybox (1:1.19.2-1) unstable; urgency=low
+
+  [ Hector Oron ]
+  * enable cross compilation support (Closes: #572431)
+
+  [ Michael Tokarev ]
+  * new upstream release (1.19.2) (Closes: #450895):
+   * refreshed all patches, except:
+     o applets-fallback: disabled, will try to get rid of it
+     o udhcpc-emit-correct-secs-field: applied upstream
+     o dirname-basename-skip-doubledash: different version applied upstream
+   * refreshed configs, not enabling most new applets
+  * debian/rules:
+   o get rid of debian/stamps subdir and long dirnames in debian/build
+   o clean up old tarball-related stuff from debian/rules
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sat, 22 Oct 2011 16:02:37 +0400
+
+busybox (1:1.18.5-1) unstable; urgency=low
+
+  [ Loïc Minier ]
+  * Drop debian/gbp.conf as git-buildpackage 0.5.22 doesn't need this anymore.
+
+  [ Michael Tokarev ]
+  * imported upstream sources into the git repository, and removed
+    debian/README.sources (the package can be built by gbp directly)
+  * enable switch_root applet (Closes: #572939)
+  * enable seq applet (Closes: #618927)
+  * enable float and fancy sleep (Closes: #341403)
+  * enable getopt (with long options) for udeb (Closes: #348314)
+  * enable standalone telnetd in static build (Closes: #621485)
+  * enable ps wide output (ps -w) (Closes: #519045)
+  * add debian/.gitignore to ignore generated files in debian/ directory
+  * enable cmp applet in udeb flavour
+  * enable diff applet in regular and static builds (Closes: #625774)
+  * enable missing compression applets in static build
+  * sync deb=>static config a bit more
+  * enable SEAMLESS_XZ decompression for static and regular builds
+  * udhcpc: emit "correct" secs field from upstream (Closes: #630000)
+  * new upstream (minor) release 0.18.5
+
+  [ Colin Watson ]
+  * Fix udhcpc default.script to operate only on IPv4, to allow dual-stack
+    operation.
+  * Enable remote logging in syslogd (closes: #605614).
+  * Enable vconfig for udeb, until such time as the ip applet can configure
+    VLANs itself (closes: #591756).
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 25 Jul 2011 13:08:04 +0400
+
+busybox (1:1.18.4-2) unstable; urgency=low
+
+  [ Loïc Minier ]
+  * Remove all references to tryexec's applet_no in patch applets-fallback as
+    this param is not used; this has the side effect of working around a
+    toolchain issue breaking busybox's exec on ARM; closes: #621137.
+  * Add debian/gbp.conf to ease usage with git-buildpackage.
+  * Add debian/README.source with some advice on git-buildpackage usage and
+    direct builds from a git checkout.
+
+ -- Joey Hess <joeyh@debian.org>  Thu, 07 Apr 2011 22:26:13 -0400
+
+busybox (1:1.18.4-1) unstable; urgency=low
+
+  * new upstream bugfix release (1.18.4)
+  * refreshed debian/patches/u-mount-FreeBSD-support.patch
+    (fix build failure on kfreebsd) (Closes: #618644)
+  * refreshed applets-fallback.patch (compensate for offsets)
+  * added debian/udeb-sizes to track various options of udeb build
+  * added dirname-basename-skip-doubledash.diff (Closes: #580492)
+  * config:
+   - enable sha1sum & sha512sum in udeb (Closes: #615926)
+   - enable mktemp in udeb (Closes: #310440)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 17 Mar 2011 16:18:35 +0300
+
+busybox (1:1.18.3-1) unstable; urgency=low
+
+  [ Michael Tokarev ]
+  * new upstream version (1.18.3).  No config changes
+    (configs refreshed)
+
+  * patches:
+   - removed doc-man-name.patch (now upstream)
+   - removed init-console-CRTSCTS.patch (now upstream)
+   - removed all patches which are in 1.18 upstream:
+     readlink-use-xmalloc_realpath.patch
+     mark-Linux-specific-configuration-options.patch
+     init-loginutils-termios-portability-fixes.patch
+     init-halt-portability-improvements.patch
+     init-make-the-initial-TERM-value-configurable.patch
+     libbb.h-add-device-names-for-Hurd-and-FreeBSD.patch
+     mkdir-fix-p-on-FreeBSD.patch
+     libbb-conditionalize-AF_-usage-in-error-reporting.patch
+     tcpsvd-udpsvd-conditionalize-usage-of-SO_ORIGINAL_DS.patch
+     less-remove-misguided-dependency-on-PLATFORM_LINUX.patch
+     bootchartd-mounting-tmpfs-is-Linux-specific.patch
+     vlock-disable-linux-console-calls-on-other-systems.patch
+     cttyhack-serial-console-detection-is-Linux-specific.patch
+     klogd-make-it-work-on-non-linux-systems.patch
+     stty-sort-out-preprocessor-conditionals.patch
+     update-scripts-kconfig-_shipped.patch
+     blockdev.patch
+   - refreshed:
+     version.patch
+     make_gen_build_files_skip_quilt.patch
+     u-mount-FreeBSD-support.patch
+   - and refreshed all patches to be with sane options and w/o fuzz
+   - removed strip.patch, use SKIP_STRIP instead
+
+  * config features changes:
+   LIBM (math functions in awk and dc) (-deb -static =udeb)
+   NON_POSIX_CP (-deb =static =udeb)
+   TAR_NOPRESERVE_TIME (tar -m) (=deb +static =udeb) (closes: #238235)
+   MD5_SHA1_SUM_CHECK (md5sum&Co -c) (+de, +static =udeb)
+   MOUNT_LOOP_CREATE (+deb +static =udeb)
+   NC_SERVER & NC_EXTRA (netcat server mode) (+deb +static =udeb)
+
+  * config applets: (closes: #316847)
+   MKSWAP (+deb =static =udeb)
+   AR (+deb =static =udeb)
+   FREERAMDISK (+deb =static =udeb)
+   PIVOT_ROOT (+deb =static =udeb)
+
+  [ Cristian Greco ]
+  * debian/control: add Vcs-* fields
+  * debian/control: add Homepage: field
+  * debian/{control,rules}: use dpkg-vendor instead of lsb_release,
+    drop build-dep
+  * debian/{control,rules}: drop unneeded build-dep on quilt
+  * added debian/watch file
+
+  [ Michael Tokarev ]
+  * removed patching-related targets in debian/rules
+    (not needed anymore for 3.0 (quilt) source format)
+  * removed mentions of .svn from debian/rules since we moved to git
+  * removed unused DEB_{HOST,BUILD}_ARCH variables from debian/rules
+  * bump Standards-Version from 3.7.3 to 3.9.1. No (!) changes needed.
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 10 Mar 2011 22:44:45 +0300
+
+busybox (1:1.17.1-10) unstable; urgency=low
+
+  [ Michael Tokarev ]
+  * tiny build system changes: from main source to build directories:
+    don't copy .dotfiles, use ln instead of cp
+
+  [ Joey Hess ]
+  * Enable sha256sum in udeb, needed by debootstrap to handle Release
+    files w/o md5sums.
+  * Did not disable md5sum in udeb because eg anna still uses them to verify
+    md5sum fields from d-i Packages files. (Those fields are still present..
+    for now.)
+
+ -- Joey Hess <joeyh@debian.org>  Mon, 21 Feb 2011 20:32:15 -0400
+
+busybox (1:1.17.1-9) unstable; urgency=low
+
+  * Team upload
+
+  [ Matt Palmer ]
+  * Build busybox udeb with IPv6 support, since otherwise wget has a
+    severe sadness.
+
+  [ Christian Perrier ]
+  * Add arping to udeb to allow link detection in netcfg
+    Closes: #612249
+
+ -- Christian Perrier <bubulle@debian.org>  Sun, 13 Feb 2011 08:23:54 +0100
 
 busybox (1:1.17.1-8) unstable; urgency=low
 

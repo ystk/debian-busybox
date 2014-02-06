@@ -9,10 +9,10 @@
 +else
 +BB_BT = KBUILD_STR($(BB_EXTRA_VERSION))
 +endif
- SKIP_STRIP = n
+ SKIP_STRIP ?= n
  
  # -std=gnu99 needed for [U]LLONG_MAX on some systems
-@@ -15,7 +20,7 @@
+@@ -15,7 +20,7 @@ CPPFLAGS += \
  	-include include/autoconf.h \
  	-D_GNU_SOURCE -DNDEBUG \
  	$(if $(CONFIG_LFS),-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64) \
