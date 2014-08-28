@@ -7,6 +7,11 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
+
+//kbuild:lib-$(CONFIG_BLKID) += get_devname.o
+//kbuild:lib-$(CONFIG_FINDFS) += get_devname.o
+//kbuild:lib-$(CONFIG_FEATURE_MOUNT_LABEL) += get_devname.o
+
 #include <sys/mount.h> /* BLKGETSIZE64 */
 #if !defined(BLKGETSIZE64)
 # define BLKGETSIZE64 _IOR(0x12,114,size_t)
@@ -49,7 +54,11 @@ get_label_uuid(int fd, char **label, char **uuid, const char **type)
 	if (volume_id_probe_all(vid, /*0,*/ size) != 0)
 		goto ret;
 
-	if (vid->label[0] != '\0' || vid->uuid[0] != '\0') {
+	if (vid->label[0] != '\0' || vid->uuid[0] != '\0'
+#if ENABLE_FEATURE_BLKID_TYPE
+	 || vid->type != NULL
+#endif
+	) {
 		*label = xstrndup(vid->label, sizeof(vid->label));
 		*uuid  = xstrndup(vid->uuid, sizeof(vid->uuid));
 #if ENABLE_FEATURE_BLKID_TYPE

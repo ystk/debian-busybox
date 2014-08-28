@@ -465,14 +465,14 @@ static void on_off(int value)
 static void print_flag_on_off(int get_arg, const char *s, unsigned long arg)
 {
 	if (get_arg) {
-		printf(" setting %s to %ld", s, arg);
+		printf(" setting %s to %lu", s, arg);
 		on_off(arg);
 	}
 }
 
 static void print_value_on_off(const char *str, unsigned long argp)
 {
-	printf(" %s\t= %2ld", str, argp);
+	printf(" %s\t= %2lu", str, argp);
 	on_off(argp != 0);
 }
 
@@ -1022,8 +1022,8 @@ static void identify(uint16_t *val)
 		}
 		if ((like_std > 3) && (val[CMDS_SUPP_1] & 0x0008)) {
 			/* We print out elsewhere whether the APM feature is enabled or
-			   not.  If it's not enabled, let's not repeat the info; just print
-			   nothing here. */
+			 * not.  If it's not enabled, let's not repeat the info; just print
+			 * nothing here. */
 			printf("\tAdvancedPM level: ");
 			if ((val[ADV_PWR] & 0xFF00) == 0x4000) {
 				uint8_t apm_level = val[ADV_PWR] & 0x00FF;
@@ -1038,7 +1038,7 @@ static void identify(uint16_t *val)
 				val[ACOUSTIC] & 0x00ff);
 		}
 	} else {
-		 /* ATAPI */
+		/* ATAPI */
 		if (eqpt != CDROM && (val[CAPAB_0] & SWRST_REQ))
 			printf("\tATA sw reset required\n");
 
@@ -1509,7 +1509,7 @@ static void bus_state_value(unsigned value)
 	else if (value == BUSSTATE_TRISTATE)
 		printf(" (tristate)\n");
 	else
-		printf(" (unknown: %d)\n", value);
+		printf(" (unknown: %u)\n", value);
 }
 #endif
 
@@ -1589,7 +1589,7 @@ static void interpret_xfermode(unsigned xfermode)
 static void print_flag(int flag, const char *s, unsigned long value)
 {
 	if (flag)
-		printf(" setting %s to %ld\n", s, value);
+		printf(" setting %s to %lu\n", s, value);
 }
 
 static void process_dev(char *devname)

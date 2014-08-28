@@ -37,7 +37,8 @@ static const struct pam_conv conv = {
 enum {
 	TIMEOUT = 60,
 	EMPTY_USERNAME_COUNT = 10,
-	USERNAME_SIZE = 32,
+	/* Some users found 32 chars limit to be too low: */
+	USERNAME_SIZE = 64,
 	TTYNAME_SIZE = 32,
 };
 
@@ -419,7 +420,7 @@ int login_main(int argc UNUSED_PARAM, char **argv)
 		 * Note that reads (in no-echo mode) trash tty attributes.
 		 * If we get interrupted by SIGALRM, we need to restore attrs.
 		 */
-		if (correct_password(pw))
+		if (ask_and_check_password(pw) > 0)
 			break;
 #endif /* ENABLE_PAM */
  auth_failed:

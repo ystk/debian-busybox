@@ -76,6 +76,33 @@
  * 6n words for files of length n.
  */
 
+//config:config DIFF
+//config:	bool "diff"
+//config:	default y
+//config:	help
+//config:	  diff compares two files or directories and outputs the
+//config:	  differences between them in a form that can be given to
+//config:	  the patch command.
+//config:
+//config:config FEATURE_DIFF_LONG_OPTIONS
+//config:	bool "Enable long options"
+//config:	default y
+//config:	depends on DIFF && LONG_OPTS
+//config:	help
+//config:	  Enable use of long options.
+//config:
+//config:config FEATURE_DIFF_DIR
+//config:	bool "Enable directory support"
+//config:	default y
+//config:	depends on DIFF
+//config:	help
+//config:	  This option enables support for directory and subdirectory
+//config:	  comparison.
+
+//kbuild:lib-$(CONFIG_DIFF) += diff.o
+
+//applet:IF_DIFF(APPLET(diff, BB_DIR_USR_BIN, BB_SUID_DROP))
+
 //usage:#define diff_trivial_usage
 //usage:       "[-abBdiNqrTstw] [-L LABEL] [-S FILE] [-U LINES] FILE1 FILE2"
 //usage:#define diff_full_usage "\n\n"
@@ -843,7 +870,7 @@ static void diffdir(char *p[2], const char *s_start)
 		 * add_to_dirlist will remove it. */
 		list[i].len = strlen(p[i]);
 		recursive_action(p[i], ACTION_RECURSE | ACTION_FOLLOWLINKS,
-		                 add_to_dirlist, skip_dir, &list[i], 0);
+				add_to_dirlist, skip_dir, &list[i], 0);
 		/* Sort dl alphabetically.
 		 * GNU diff does this ignoring any number of trailing dots.
 		 * We don't, so for us dotted files almost always are

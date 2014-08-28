@@ -9,10 +9,41 @@
  * Limitations:
  * Doesn't check CRC's
  * Only supports new ASCII and CRC formats
- *
  */
 #include "libbb.h"
 #include "bb_archive.h"
+
+//config:config CPIO
+//config:	bool "cpio"
+//config:	default y
+//config:	help
+//config:	  cpio is an archival utility program used to create, modify, and
+//config:	  extract contents from archives.
+//config:	  cpio has 110 bytes of overheads for every stored file.
+//config:
+//config:	  This implementation of cpio can extract cpio archives created in the
+//config:	  "newc" or "crc" format, it cannot create or modify them.
+//config:
+//config:	  Unless you have a specific application which requires cpio, you
+//config:	  should probably say N here.
+//config:
+//config:config FEATURE_CPIO_O
+//config:	bool "Support for archive creation"
+//config:	default y
+//config:	depends on CPIO
+//config:	help
+//config:	  This implementation of cpio can create cpio archives in the "newc"
+//config:	  format only.
+//config:
+//config:config FEATURE_CPIO_P
+//config:	bool "Support for passthrough mode"
+//config:	default y
+//config:	depends on FEATURE_CPIO_O
+//config:	help
+//config:	  Passthrough mode. Rarely used.
+
+//applet:IF_CPIO(APPLET(cpio, BB_DIR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_CPIO) += cpio.o
 
 //usage:#define cpio_trivial_usage
 //usage:       "[-dmvu] [-F FILE]" IF_FEATURE_CPIO_O(" [-H newc]")
@@ -253,24 +284,24 @@ static NOINLINE int cpio_o(void)
 		}
 
 		bytes += printf("070701"
-		                "%08X%08X%08X%08X%08X%08X%08X"
-		                "%08X%08X%08X%08X" /* GNU cpio uses uppercase hex */
+				"%08X%08X%08X%08X%08X%08X%08X"
+				"%08X%08X%08X%08X" /* GNU cpio uses uppercase hex */
 				/* strlen+1: */ "%08X"
 				/* chksum: */   "00000000" /* (only for "070702" files) */
 				/* name,NUL: */ "%s%c",
-		                (unsigned)(uint32_t) st.st_ino,
-		                (unsigned)(uint32_t) st.st_mode,
-		                (unsigned)(uint32_t) st.st_uid,
-		                (unsigned)(uint32_t) st.st_gid,
-		                (unsigned)(uint32_t) st.st_nlink,
-		                (unsigned)(uint32_t) st.st_mtime,
-		                (unsigned)(uint32_t) st.st_size,
-		                (unsigned)(uint32_t) major(st.st_dev),
-		                (unsigned)(uint32_t) minor(st.st_dev),
-		                (unsigned)(uint32_t) major(st.st_rdev),
-		                (unsigned)(uint32_t) minor(st.st_rdev),
-		                (unsigned)(strlen(name) + 1),
-		                name, '\0');
+				(unsigned)(uint32_t) st.st_ino,
+				(unsigned)(uint32_t) st.st_mode,
+				(unsigned)(uint32_t) st.st_uid,
+				(unsigned)(uint32_t) st.st_gid,
+				(unsigned)(uint32_t) st.st_nlink,
+				(unsigned)(uint32_t) st.st_mtime,
+				(unsigned)(uint32_t) st.st_size,
+				(unsigned)(uint32_t) major(st.st_dev),
+				(unsigned)(uint32_t) minor(st.st_dev),
+				(unsigned)(uint32_t) major(st.st_rdev),
+				(unsigned)(uint32_t) minor(st.st_rdev),
+				(unsigned)(strlen(name) + 1),
+				name, '\0');
 		bytes = cpio_pad4(bytes);
 
 		if (st.st_size) {

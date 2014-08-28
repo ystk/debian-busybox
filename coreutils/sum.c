@@ -70,9 +70,9 @@ static unsigned sum_file(const char *file, unsigned type)
 	if (type >= SUM_SYSV) {
 		r = (s & 0xffff) + ((s & 0xffffffff) >> 16);
 		s = (r & 0xffff) + (r >> 16);
-		printf("%d %llu %s\n", s, (total_bytes + 511) / 512, file);
+		printf("%u %llu %s\n", s, (total_bytes + 511) / 512, file);
 	} else
-		printf("%05d %5llu %s\n", s, (total_bytes + 1023) / 1024, file);
+		printf("%05u %5llu %s\n", s, (total_bytes + 1023) / 1024, file);
 	return 1;
 #undef buf
 }
@@ -94,8 +94,8 @@ int sum_main(int argc UNUSED_PARAM, char **argv)
 		n = sum_file("-", type);
 	} else {
 		/* Need to print the name if either
-		   - more than one file given
-		   - doing sysv */
+		 * - more than one file given
+		 * - doing sysv */
 		type += (argv[1] || type == SUM_SYSV);
 		n = 1;
 		do {

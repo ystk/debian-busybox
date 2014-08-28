@@ -1,3 +1,8 @@
+Subject: build-sys: allow override of BB_BT (build tag) from command line
+From: Bastian Blank <waldi@debian.org>
+Date: Fri Mar 28 14:13:30 2008 +0000
+Forwarded: no
+
 --- a/Makefile.flags
 +++ b/Makefile.flags
 @@ -4,6 +4,11 @@

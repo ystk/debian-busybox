@@ -3,10 +3,12 @@ Priority: optional
 Section: utils
 Maintainer: Debian Install System Team <debian-boot@lists.debian.org>
 Uploaders: Bastian Blank <waldi@debian.org>, Michael Tokarev <mjt@tls.msk.ru>
-Build-Depends: debhelper (>> 7)
-Standards-Version: 3.9.3
-Vcs-Git: git://git.debian.org/d-i/busybox.git
-Vcs-Browser: http://git.debian.org/?p=d-i/busybox.git
+Build-Depends: debhelper (>= 9),
+# needs for testsuite to run
+  zip
+Standards-Version: 3.9.5
+Vcs-Git: git://anonscm.debian.org/d-i/busybox.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=d-i/busybox.git
 Homepage: http://www.busybox.net
 
 Package: busybox
@@ -14,6 +16,7 @@ Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Conflicts: busybox-static
 Replaces: busybox-static
+Breaks: initramfs-tools (<<0.99)
 Description: Tiny utilities for small and embedded systems
  BusyBox combines tiny versions of many common UNIX utilities into a single
  small executable. It provides minimalist replacements for the most common
@@ -33,6 +36,7 @@ Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Conflicts: busybox
 Replaces: busybox
+Provides: busybox
 Priority: extra
 Section: shells
 Description: Standalone rescue shell with tons of builtin utilities
@@ -100,7 +104,7 @@ Section: net
 Architecture: linux-any
 Depends: busybox (>> ${source:Upstream-Version}) | busybox-static (>> ${source:Upstream-Version}), ${misc:Depends}
 Description: Provides the busybox DHCP client implementation
- Busybox contains a very small yet fully function RFC compliant DHCP
+ Busybox contains a very small yet fully functional RFC compliant DHCP
  client formerly known as udhcpc.
  .
  This package contains the glue to use the busybox udhcpc as DHCP

@@ -7,6 +7,7 @@
  */
 #include "libbb.h"
 #include <netinet/ip.h> /* For IPTOS_LOWDELAY definition */
+#include <sys/resource.h> /* setpriority */
 #ifndef IPTOS_LOWDELAY
 # define IPTOS_LOWDELAY 0x10
 #endif
@@ -377,7 +378,7 @@ step_time_once(double offset)
 		bb_perror_msg_and_die("settimeofday");
 
 	tval = tv.tv_sec;
-	strftime(buf, sizeof(buf), "%a %b %e %H:%M:%S %Z %Y", localtime(&tval));
+	strftime_YYYYMMDDHHMMSS(buf, sizeof(buf), &tval);
 
 	bb_error_msg("setting clock to %s (offset %fs)", buf, offset);
 
@@ -709,7 +710,7 @@ recv_and_process_client_pkt(void /*int fd*/)
 	msg.m_status = G.synced ? G.leap : LI_ALARM;
 	msg.m_status |= (query_status & VERSION_MASK);
 	msg.m_status |= ((query_status & MODE_MASK) == MODE_CLIENT) ?
-			 MODE_SERVER : MODE_SYM_PAS;
+			MODE_SERVER : MODE_SYM_PAS;
 	msg.m_stratum = G.stratum;
 	msg.m_ppoll = query_ppoll;
 	msg.m_precision_exp = G_precision_exp;

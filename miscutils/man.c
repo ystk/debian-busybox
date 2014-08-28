@@ -129,27 +129,21 @@ static int show_manpage(const char *pager, char *man_filename, int man, int leve
 #endif
 #if ENABLE_FEATURE_SEAMLESS_XZ
 	strcpy(ext, "xz");
-	if (run_pipe(pager, man_filename, man, level))
+	if (run_pipe(pager, filename_with_zext, man, level))
 		return 1;
 #endif
 #if ENABLE_FEATURE_SEAMLESS_BZ2
 	strcpy(ext, "bz2");
-	if (run_pipe(pager, man_filename, man, level))
+	if (run_pipe(pager, filename_with_zext, man, level))
 		return 1;
 #endif
 #if ENABLE_FEATURE_SEAMLESS_GZ
 	strcpy(ext, "gz");
-	if (run_pipe(pager, man_filename, man, level))
+	if (run_pipe(pager, filename_with_zext, man, level))
 		return 1;
 #endif
 
-#if SEAMLESS_COMPRESSION
-	ext[-1] = '\0';
-#endif
-	if (run_pipe(pager, man_filename, man, level))
-		return 1;
-
-	return 0;
+	return run_pipe(pager, man_filename, man, level);
 }
 
 int man_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
@@ -168,7 +162,7 @@ int man_main(int argc UNUSED_PARAM, char **argv)
 	opt = getopt32(argv, "+aw");
 	argv += optind;
 
-	sec_list = xstrdup("1:2:3:4:5:6:7:8:9");
+	sec_list = xstrdup("0p:1:1p:2:3:3p:4:5:6:7:8:9");
 	/* Last valid man_path_list[] is [0x10] */
 	count_mp = 0;
 	man_path_list = xzalloc(0x11 * sizeof(man_path_list[0]));

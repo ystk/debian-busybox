@@ -205,14 +205,17 @@
 
 #include <stdint.h>
 typedef int      bb__aliased_int      FIX_ALIASING;
+typedef long     bb__aliased_long     FIX_ALIASING;
 typedef uint16_t bb__aliased_uint16_t FIX_ALIASING;
 typedef uint32_t bb__aliased_uint32_t FIX_ALIASING;
+typedef uint64_t bb__aliased_uint64_t FIX_ALIASING;
 
 /* NB: unaligned parameter should be a pointer, aligned one -
  * a lvalue. This makes it more likely to not swap them by mistake
  */
 #if defined(i386) || defined(__x86_64__) || defined(__powerpc__)
-# define move_from_unaligned_int(v, intp) ((v) = *(bb__aliased_int*)(intp))
+# define move_from_unaligned_int(v, intp)  ((v) = *(bb__aliased_int*)(intp))
+# define move_from_unaligned_long(v, longp) ((v) = *(bb__aliased_long*)(longp))
 # define move_from_unaligned16(v, u16p) ((v) = *(bb__aliased_uint16_t*)(u16p))
 # define move_from_unaligned32(v, u32p) ((v) = *(bb__aliased_uint32_t*)(u32p))
 # define move_to_unaligned16(u16p, v)   (*(bb__aliased_uint16_t*)(u16p) = (v))
@@ -221,11 +224,12 @@ typedef uint32_t bb__aliased_uint32_t FIX_ALIASING;
 #else
 /* performs reasonably well (gcc usually inlines memcpy here) */
 # define move_from_unaligned_int(v, intp) (memcpy(&(v), (intp), sizeof(int)))
+# define move_from_unaligned_long(v, longp) (memcpy(&(v), (longp), sizeof(long)))
 # define move_from_unaligned16(v, u16p) (memcpy(&(v), (u16p), 2))
 # define move_from_unaligned32(v, u32p) (memcpy(&(v), (u32p), 4))
 # define move_to_unaligned16(u16p, v) do { \
 	uint16_t __t = (v); \
-	memcpy((u16p), &__t, 4); \
+	memcpy((u16p), &__t, 2); \
 } while (0)
 # define move_to_unaligned32(u32p, v) do { \
 	uint32_t __t = (v); \
@@ -260,6 +264,12 @@ typedef unsigned smalluint;
 
 #define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
 
+#ifdef __UCLIBC__
+# define UCLIBC_VERSION KERNEL_VERSION(__UCLIBC_MAJOR__, __UCLIBC_MINOR__, __UCLIBC_SUBLEVEL__)
+#else
+# define UCLIBC_VERSION 0
+#endif
+
 
 /* ---- Miscellaneous --------------------------------------- */
 
@@ -284,7 +294,8 @@ typedef unsigned smalluint;
 #define fdprintf dprintf
 
 /* Useful for defeating gcc's alignment of "char message[]"-like data */
-#if 1 /* if needed: !defined(arch1) && !defined(arch2) */
+#if !defined(__s390__)
+    /* on s390[x], non-word-aligned data accesses require larger code */
 # define ALIGN1 __attribute__((aligned(1)))
 # define ALIGN2 __attribute__((aligned(2)))
 # define ALIGN4 __attribute__((aligned(4)))
@@ -301,8 +312,9 @@ typedef unsigned smalluint;
  * for a mmu-less system.
  */
 #if ENABLE_NOMMU || \
-    (defined __UCLIBC__ && __UCLIBC_MAJOR__ >= 0 && __UCLIBC_MINOR__ >= 9 && \
-    __UCLIBC_SUBLEVEL__ > 28 && !defined __ARCH_USE_MMU__)
+    (defined __UCLIBC__ && \
+     UCLIBC_VERSION > KERNEL_VERSION(0, 9, 28) && \
+     !defined __ARCH_USE_MMU__)
 # define BB_MMU 0
 # define USE_FOR_NOMMU(...) __VA_ARGS__
 # define USE_FOR_MMU(...)
@@ -334,6 +346,12 @@ typedef unsigned smalluint;
 # define MAXSYMLINKS SYMLOOP_MAX
 #endif
 
+#if defined(ANDROID) || defined(__ANDROID__)
+# define BB_ADDITIONAL_PATH ":/system/sbin:/system/bin:/system/xbin"
+# define SYS_ioprio_set __NR_ioprio_set
+# define SYS_ioprio_get __NR_ioprio_get
+#endif
+
 
 /* ---- Who misses what? ------------------------------------ */
 
@@ -363,13 +381,8 @@ typedef unsigned smalluint;
 #define HAVE_NET_ETHERNET_H 1
 #define HAVE_SYS_STATFS_H 1
 
-#if defined(__UCLIBC_MAJOR__)
-# if __UCLIBC_MAJOR__ == 0 \
-  && (   __UCLIBC_MINOR__ < 9 \
-     || (__UCLIBC_MINOR__ == 9 && __UCLIBC_SUBLEVEL__ < 32) \
-     )
-#  undef HAVE_STRVERSCMP
-# endif
+#if defined(__UCLIBC__) && UCLIBC_VERSION < KERNEL_VERSION(0, 9, 32)
+# undef HAVE_STRVERSCMP
 #endif
 
 #if defined(__dietlibc__)
@@ -421,7 +434,7 @@ typedef unsigned smalluint;
 # undef HAVE_UNLOCKED_LINE_OPS
 #endif
 
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__APPLE__)
 # undef HAVE_STRCHRNUL
 #endif
 

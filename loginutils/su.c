@@ -93,7 +93,7 @@ int su_main(int argc UNUSED_PARAM, char **argv)
 
 	pw = xgetpwnam(opt_username);
 
-	if (cur_uid == 0 || correct_password(pw)) {
+	if (cur_uid == 0 || ask_and_check_password(pw) > 0) {
 		if (ENABLE_FEATURE_SU_SYSLOG)
 			syslog(LOG_NOTICE, "%c %s %s:%s",
 				'+', tty, old_user, opt_username);
@@ -131,7 +131,8 @@ int su_main(int argc UNUSED_PARAM, char **argv)
 	change_identity(pw);
 	setup_environment(opt_shell,
 			((flags & SU_OPT_l) / SU_OPT_l * SETUP_ENV_CLEARENV)
-			+ (!(flags & SU_OPT_mp) * SETUP_ENV_CHANGEENV),
+			+ (!(flags & SU_OPT_mp) * SETUP_ENV_CHANGEENV)
+			+ (!(flags & SU_OPT_l) * SETUP_ENV_NO_CHDIR),
 			pw);
 	IF_SELINUX(set_current_security_context(NULL);)
 

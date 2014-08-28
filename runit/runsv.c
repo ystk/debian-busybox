@@ -33,7 +33,6 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //usage:#define runsv_full_usage "\n\n"
 //usage:       "Start and monitor a service and optionally an appendant log service"
 
-#include <sys/poll.h>
 #include <sys/file.h>
 #include "libbb.h"
 #include "runit_lib.h"
@@ -172,7 +171,7 @@ static void update_status(struct svdir *s)
 		}
 		close(fd);
 		if (rename_or_warn("supervise/pid.new",
-		    s->islog ? "log/supervise/pid" : "log/supervise/pid"+4))
+				s->islog ? "log/supervise/pid" : "log/supervise/pid"+4))
 			return;
 		pidchanged = 0;
 	}

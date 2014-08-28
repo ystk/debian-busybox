@@ -1,8 +1,235 @@
+busybox (1:1.22.0-8) unstable; urgency=medium
+
+  * Team upload
+
+  [ Michael Tokarev ]
+  * iproute-support-onelink-route-option-and-print-route-flags.patch
+  * udhcpc default script improvements:
+    - set interface up in deconfig, which allows udhcpc to operate on
+      initially down interface
+    - set mtu if given
+    - always use $subnet (it is always set)
+    - use (linux-specific) ip applet (since udhcpc is linux-specific anyway)
+    - only process one default route, since linux ignores all but the first
+    - only change default route if differ from actual
+    - special-case for /32 subnets, add host route to the router IP
+      (used heavily in clouds and other thin provisioning environments)
+      (partially Closes: #652573, for udhcpc)
+    - flush routes in deconfig too
+    - log messages to syslog
+    - various minor cleanups
+  * busybox-udeb: use ip route onlink in udhcpc script to handle /32 subnets
+    (Closes: #652573)
+  * update-deb-format-support.patch: patch from Guillem Jover to support
+    xz format in busybox dpkg (enabled only in busybox-static)
+    (same patch than the one in -7 but named differently)
+
+ -- Christian Perrier <bubulle@debian.org>  Sun, 03 Aug 2014 12:38:57 +0200
+
+busybox (1:1.22.0-7) unstable; urgency=low
+
+  * Team upload
+
+  [ Guillem Jover ]
+  * Update deb format support. Closes: #756462
+
+  [ Christian Perrier ]
+  * Add gbp.conf to build the package automatically with git-
+    buildpackage
+  * Source /lib/lsb/init-functions in udhcpd init script
+
+ -- Christian Perrier <bubulle@debian.org>  Sun, 03 Aug 2014 09:22:14 +0200
+
+busybox (1:1.22.0-6) unstable; urgency=low
+
+  * Team upload
+
+  [ Cyril Brulebois ]
+  * Fix typo in udhcpc's long description, thanks to Pascal De Vuyst for
+    the report (Closes: #745292).
+
+ -- Christian Perrier <bubulle@debian.org>  Mon, 28 Apr 2014 08:48:37 +0200
+
+busybox (1:1.22.0-5) unstable; urgency=low
+
+  * Team upload
+
+  [ Michael Tokarev ]
+  * enable (apparently forgotten) lzop applet for regular and static builds
+  * support DEB_BUILD_OPTIONS=parallel=N (Closes: #740397)
+  * support DEB_BUILD_OPTIONS=nocheck to skip testsuite run
+  * enable date applet for udeb flavour too (Closes: #702093)
+
+ -- Christian Perrier <bubulle@debian.org>  Sat, 22 Mar 2014 20:06:42 +0100
+
+busybox (1:1.22.0-4) unstable; urgency=low
+
+  * new: do-not-fail-on-missing-SIGPWR.patch: fix FTBFS on !linux,
+    refresh: testsuite-kfreebsd.diff: fix testsuite on kFreebsd
+    Thanks to Steven Chamberlain for this (Closes: #736975).
+  * new: zcat:-complain-if-input-is-not-compressed.diff patch from
+    upstream, to fix zcat allowing uncompressing input after
+    previous fixes for #736872
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 03 Feb 2014 12:51:26 +0400
+
+busybox (1:1.22.0-3) unstable; urgency=low
+
+  * mention closing of #685361 by 1.22
+  * enable devmem applet for regular and static builds (Closes: #696704)
+  * enable acpid applet for regular and static builds (Closes: #704815)
+  * enable mount -f (MOUNT_FAKE) for all builds (Closes: #484799)
+  * let busybox-static to provide busybox (Closes: #375568)
+  * added two fixes from upstream (Closes: #736872)
+    libarchive-open_zipped-does-not-need-to-check-extensions.diff
+    libbb-open_zipped-should-not-fail-on-non-compressed-files.diff
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Tue, 28 Jan 2014 14:27:50 +0400
+
+busybox (1:1.22.0-2) unstable; urgency=low
+
+  * use the same initramfs hook for busybox-static as
+    for busybox (Closes: #736521)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 26 Jan 2014 19:47:07 +0400
+
+busybox (1:1.22.0-1) unstable; urgency=low
+
+  * new upstream release (1.22.0), removed patches which were upstreamed.
+    This version actually fixes #686502 (concatenated xz streams)
+    which were closed in debian but the patch has been dropped meanwhile.
+    (also Closes: #685361)
+  * update configs.  In particular, enable new fstrim applet
+    for regular build
+  * update to 1.22.1 (1.22.1.diff)
+  * include stable changes from upstream up to 2014-01-23
+  * testsuite-fix-last-which-change.diff (applied upstream):
+    use `command -v' instead of `command -pv' (Closes: #733502)
+  * added description to version.patch
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Thu, 23 Jan 2014 18:39:42 +0400
+
+busybox (1:1.21.0-6exp) experimental; urgency=low
+
+  * increase syslog buffer size from 256 to 1024 bytes,
+    hopefully this (Closes: #519356)
+  * mention closing of #681940, #701960, #716808 by 1.21
+  * document static_lease in udhcpd.conf.5 (Jonathan David Amery)
+    (Closes: #699229)
+  * fix busybox initramfs hook to actually _run_ (make it executable)
+    and actually strip leading /usr from applet paths.  Stupid.
+    (Closes: #732256)
+  * move build directory from debian/build to build
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 16 Dec 2013 13:31:55 +0400
+
+busybox (1:1.21.0-5exp) experimental; urgency=low
+
+  * build-depend on zip so that the testsuite can be run
+  * update Standards-Version to 3.9.5 (no changes needed)
+  * always run testsuite in verbose mode
+  * run testsuite with C.UTF8 locale to enable unicode tests
+  * fail if the testsuite fails (when RUN_TESTSUITE=y)
+  * fix or disable some tests for non-linux OSes
+    (debian/testsuite-*.diff files)
+  * taskset is linux-specific, disable it for kfreebsd and hurd
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 09 Dec 2013 21:59:25 +0400
+
+busybox (1:1.21.0-4exp) experimental; urgency=low
+
+  * actually enable running the testsuite
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 09 Dec 2013 15:06:07 +0400
+
+busybox (1:1.21.0-3exp) experimental; urgency=low
+
+  * enable running the testsuite but do not fail the build if testsuite fails
+  * readlink-MAXSYMLINKS-hurd.patch to stop busybox from ftbfs'ing on hurd
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Mon, 09 Dec 2013 14:51:33 +0400
+
+busybox (1:1.21.0-2exp) experimental; urgency=low
+
+  * set CONFIG_BUSYBOX_EXEC_PATH=/proc/self/exe on linux and kfreebsd,
+    and set it to /bin/busybox on hurd since it does not have /proc/self/exe
+    equivalent.
+    This is needed to at least run the testsuite, because we really want to
+    execute our just-built binary, not system /bin/busybox binary.  And this
+    is needed in all other cases when our binary is not in /bin/busybox.
+    This is the upstream default too.
+    The original change were made at Mar-2008 when applet-fallback patch
+    were introduced, in an attempt to fix #472653.  Without this change,
+    busybox was useless in the very beginning of initramfs.  In order to
+    fix this, we'll create applet links to busybox binary in /bin&Co.
+  * add initramfs hook to install busybox properly in initramfs
+  * apply testsuite-bashisms.patch, to enable running of testsuite with dash.
+  * add ability to run testsuite (disabled for now, unicode tests fail on sid)
+  * rewamp/simplify debian/rules
+  * use busybox versions of ifconfig and route in udhcpc script
+    (Closes: #684596)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sat, 07 Dec 2013 19:47:27 +0400
+
+busybox (1:1.21.0-1) unstable; urgency=low
+
+  * new upstream release (1.21) (Closes: #681940, #701960, #716808)
+  * removed all 1.20.* patches from upstream, plus a few other
+    which are also applied now:
+    - dont-force-no-alignment-for-s390.patch
+    - grep-fix-grep--Fw-not-respecting-the--w-option.patch
+    - mdev-fix-mode-of-dir1-in-=dir1-dir2-file-rule.patch
+    - cherrypick-include-fix-ftbfs-gcc4.8.patch
+  * refreshed patches:
+    = shell-ash-export-HOME.patch
+    = u-mount-FreeBSD-support.patch
+  * refreshed configs
+  * applied 1.21.1 (stable) patch from upstream, and removed more
+    patches which are now included in 1.21.1:
+    - xz-support-concatenated-xz-streams.patch
+    - fix-move_to_unaligned16.patch
+    - xz-fix-put_unaligned_e32.patch
+  * removed applets-fallback.patch.  It hasn't been applied since 1.20
+    (including wheezy), just get rid of it finally.  Please note that
+    this wasn't intentional, I didn't plan to stop applying it for
+    wheezy, especially silently.
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sun, 10 Nov 2013 18:34:21 +0400
+
+busybox (1:1.20.0-9) unstable; urgency=low
+
+  * Team upload
+
+  [ Dmitrijs Ledkovs ]
+  * Bump debhelper compat level to 9.
+  * Set Vcs-* to canonical format.
+  * Cherrypick missing includes from 1.21, to fix FTBFS with gcc4.8.
+
+  [ Christian Perrier ]
+  * Update Standards to 3.9.4 (checked)
+
+ -- Christian Perrier <bubulle@debian.org>  Sat, 24 Aug 2013 08:37:40 +0200
+
+busybox (1:1.20.0-8) unstable; urgency=low
+
+  * grep-fix-grep--Fw-not-respecting-the--w-option.patch - implement
+    fgrep -w correctly (Closes: #695862)
+  * xz-support-concatenated-xz-streams.patch (Closes: #686502)
+  * lineedit-initialize-delptr.patch - fix segfault in line editing
+    facility (Closes: #701959)
+  * mdev-fix-mode-of-dir1-in-=dir1-dir2-file-rule.patch - make intermediate
+    dirs in /dev to be of mode 0755 not 0777 (Closes: #701965)
+  * fix unaligned access macros (Closes: #701968)
+    - fix-move_to_unaligned16.patch
+    - xz-fix-put_unaligned_e32.patch
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Sat, 02 Mar 2013 16:42:49 +0400
+
 busybox (1:1.20.0-7) unstable; urgency=low
 
   * set CONFIG_FEATURE_COPYBUF_KB from 4 to 64 for all flavours.  This
     increases speed of various applets *dramatically*.  For example, wget
-    applet downlad time for certain file decreased from 3.8sec to 0.6sec.
+    applet download time for certain file decreased from 3.8sec to 0.6sec.
   * modprobe-read-modules-builtin.patch: stop modprobe from complaining
     when asked to load a "module" which is built-in.  Thank you
     Ben Hutchings for the patch. (Closes: #652672)

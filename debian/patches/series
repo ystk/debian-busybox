@@ -1,17 +1,16 @@
-1.20.1.patch
-
 # upstream stable patches
-busybox-1.20.1-ash.patch
-busybox-1.20.1-ifupdown.patch
-busybox-1.20.1-man.patch
-busybox-1.20.1-tar.patch
-busybox-1.20.1-ps.patch
-busybox-1.20.1-mke2fs.patch
-busybox-1.20.1-1.20.2.patch
+1.22.1.diff
+ash-in-bash-compat-mode-always-export-SHLVL.diff
+libbb-fix-parsing-of-10101010-datetime-form.diff
+testsuite-fix-last-which-change.diff
+libarchive-open_zipped-does-not-need-to-check-extensions.diff
+libbb-open_zipped-should-not-fail-on-non-compressed-files.diff
+zcat:-complain-if-input-is-not-compressed.diff
+
+# submitted fixes
+do-not-fail-on-missing-SIGPWR.patch
 
 shell-ash-export-HOME.patch
-# we need to get rid of this one:
-#applets-fallback.patch
 version.patch
 init-console.patch
 
@@ -21,7 +20,6 @@ swaponoff-FreeBSD-support.patch
 
 modprobe-read-modules-builtin.patch
 
-# http://bugs.debian.org/681760
-dont-force-no-alignment-for-s390.patch
-
 stop-checking-ancient-kernel-version.patch
+iproute-support-onelink-route-option-and-print-route-flags.patch
+update-deb-format-support.patch

@@ -49,9 +49,6 @@
 #include <fnmatch.h>
 
 #define MAX_OPT_DEPTH 10
-#define EUNBALBRACK 10001
-#define EUNDEFVAR   10002
-#define EUNBALPER   10000
 
 #if ENABLE_FEATURE_IFUPDOWN_MAPPING
 #define MAX_INTERFACE_LENGTH 10
@@ -140,8 +137,6 @@ static const char keywords_up_down[] ALIGN1 =
 	"up\0"
 	"down\0"
 	"pre-up\0"
-	"pre-down\0"
-	"post-up\0"
 	"post-down\0"
 ;
 
@@ -235,7 +230,7 @@ static int count_netmask_bits(const char *dotted_quad)
 static char *parse(const char *command, struct interface_defn_t *ifd)
 {
 	size_t old_pos[MAX_OPT_DEPTH] = { 0 };
-	int okay[MAX_OPT_DEPTH] = { 1 };
+	smallint okay[MAX_OPT_DEPTH] = { 1 };
 	int opt_depth = 1;
 	char *result = NULL;
 
@@ -246,13 +241,10 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 			command++;
 			break;
 		case '\\':
-			if (command[1]) {
-				addstr(&result, command + 1, 1);
-				command += 2;
-			} else {
-				addstr(&result, command, 1);
+			if (command[1])
 				command++;
-			}
+			addstr(&result, command, 1);
+			command++;
 			break;
 		case '[':
 			if (command[1] == '[' && opt_depth < MAX_OPT_DEPTH) {
@@ -261,7 +253,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 				opt_depth++;
 				command += 2;
 			} else {
-				addstr(&result, "[", 1);
+				addstr(&result, command, 1);
 				command++;
 			}
 			break;
@@ -273,7 +265,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 				}
 				command += 2;
 			} else {
-				addstr(&result, "]", 1);
+				addstr(&result, command, 1);
 				command++;
 			}
 			break;
@@ -285,7 +277,7 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 				command++;
 				nextpercent = strchr(command, '%');
 				if (!nextpercent) {
-					errno = EUNBALPER;
+					/* Unterminated %var% */
 					free(result);
 					return NULL;
 				}
@@ -330,13 +322,13 @@ static char *parse(const char *command, struct interface_defn_t *ifd)
 	}
 
 	if (opt_depth > 1) {
-		errno = EUNBALBRACK;
+		/* Unbalanced bracket */
 		free(result);
 		return NULL;
 	}
 
 	if (!okay[0]) {
-		errno = EUNDEFVAR;
+		/* Undefined variable and we aren't in a bracket */
 		free(result);
 		return NULL;
 	}
@@ -751,7 +743,7 @@ static const struct method_t *get_method(const struct address_family_t *af, char
 	return NULL;
 }
 
-static struct interfaces_file_t *read_interfaces(const char *filename)
+static struct interfaces_file_t *read_interfaces(const char *filename, struct interfaces_file_t *defn)
 {
 	/* Let's try to be compatible.
 	 *
@@ -766,19 +758,25 @@ static struct interfaces_file_t *read_interfaces(const char *filename)
 	 * be ignored. Blank lines are ignored. Lines may be indented freely.
 	 * A "\" character at the very end of the line indicates the next line
 	 * should be treated as a continuation of the current one.
+	 *
+	 * Lines  beginning with "source" are used to include stanzas from
+	 * other files, so configuration can be split into many files.
+	 * The word "source" is followed by the path of file to be sourced.
 	 */
 #if ENABLE_FEATURE_IFUPDOWN_MAPPING
 	struct mapping_defn_t *currmap = NULL;
 #endif
 	struct interface_defn_t *currif = NULL;
-	struct interfaces_file_t *defn;
 	FILE *f;
 	char *buf;
 	char *first_word;
 	char *rest_of_line;
 	enum { NONE, IFACE, MAPPING } currently_processing = NONE;
 
-	defn = xzalloc(sizeof(*defn));
+	if (!defn)
+		defn = xzalloc(sizeof(*defn));
+
+	debug_noise("reading %s file:\n", filename);
 	f = xfopen_for_read(filename);
 
 	while ((buf = xmalloc_fgetline(f)) != NULL) {
@@ -889,11 +887,18 @@ static struct interfaces_file_t *read_interfaces(const char *filename)
 				debug_noise("\nauto %s\n", first_word);
 			}
 			currently_processing = NONE;
+		} else if (strcmp(first_word, "source") == 0) {
+			read_interfaces(next_word(&rest_of_line), defn);
 		} else {
 			switch (currently_processing) {
 			case IFACE:
 				if (rest_of_line[0] == '\0')
 					bb_error_msg_and_die("option with empty value \"%s\"", buf);
+
+				if (strcmp(first_word, "post-up") == 0)
+					first_word += 5; /* "up" */
+				else if (strcmp(first_word, "pre-down") == 0)
+					first_word += 4; /* "down" */
 
 				/* If not one of "up", "down",... words... */
 				if (index_in_strings(keywords_up_down, first_word) < 0) {
@@ -937,6 +942,7 @@ static struct interfaces_file_t *read_interfaces(const char *filename)
 		bb_error_msg_and_die("%s: I/O error", filename);
 	}
 	fclose(f);
+	debug_noise("\ndone reading %s\n\n", filename);
 
 	return defn;
 }
@@ -963,7 +969,7 @@ static char *setlocalenv(const char *format, const char *name, const char *value
 	return result;
 }
 
-static void set_environ(struct interface_defn_t *iface, const char *mode)
+static void set_environ(struct interface_defn_t *iface, const char *mode, const char *opt)
 {
 	int i;
 	char **pp;
@@ -976,7 +982,7 @@ static void set_environ(struct interface_defn_t *iface, const char *mode)
 	}
 
 	/* note: last element will stay NULL: */
-	G.my_environ = xzalloc(sizeof(char *) * (iface->n_options + 6));
+	G.my_environ = xzalloc(sizeof(char *) * (iface->n_options + 7));
 	pp = G.my_environ;
 
 	for (i = 0; i < iface->n_options; i++) {
@@ -990,6 +996,7 @@ static void set_environ(struct interface_defn_t *iface, const char *mode)
 	*pp++ = setlocalenv("%s=%s", "ADDRFAM", iface->address_family->name);
 	*pp++ = setlocalenv("%s=%s", "METHOD", iface->method->name);
 	*pp++ = setlocalenv("%s=%s", "MODE", mode);
+	*pp++ = setlocalenv("%s=%s", "PHASE", opt);
 	if (G.startup_PATH)
 		*pp++ = setlocalenv("%s=%s", "PATH", G.startup_PATH);
 }
@@ -1044,21 +1051,21 @@ static int check(char *str)
 static int iface_up(struct interface_defn_t *iface)
 {
 	if (!iface->method->up(iface, check)) return -1;
-	set_environ(iface, "start");
+	set_environ(iface, "start", "pre-up");
 	if (!execute_all(iface, "pre-up")) return 0;
 	if (!iface->method->up(iface, doit)) return 0;
+	set_environ(iface, "start", "post-up");
 	if (!execute_all(iface, "up")) return 0;
-	if (!execute_all(iface, "post-up")) return 0;
 	return 1;
 }
 
 static int iface_down(struct interface_defn_t *iface)
 {
-	if (!iface->method->down(iface,check)) return -1;
-	set_environ(iface, "stop");
-	if (!execute_all(iface, "pre-down")) return 0;
+	if (!iface->method->down(iface, check)) return -1;
+	set_environ(iface, "stop", "pre-down");
 	if (!execute_all(iface, "down")) return 0;
 	if (!iface->method->down(iface, doit)) return 0;
+	set_environ(iface, "stop", "post-down");
 	if (!execute_all(iface, "post-down")) return 0;
 	return 1;
 }
@@ -1201,9 +1208,7 @@ int ifupdown_main(int argc UNUSED_PARAM, char **argv)
 		if (!DO_ALL) bb_show_usage();
 	}
 
-	debug_noise("reading %s file:\n", interfaces);
-	defn = read_interfaces(interfaces);
-	debug_noise("\ndone reading %s\n\n", interfaces);
+	defn = read_interfaces(interfaces, NULL);
 
 	/* Create a list of interfaces to work on */
 	if (DO_ALL) {

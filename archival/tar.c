@@ -22,7 +22,6 @@
  *
  * Licensed under GPLv2 or later, see file LICENSE in this source tree.
  */
-
 /* TODO: security with -C DESTDIR option can be enhanced.
  * Consider tar file created via:
  * $ tar cvf bug.tar anything.txt
@@ -42,6 +41,109 @@
  * This doesn't feel right, and IIRC GNU tar doesn't do that.
  */
 
+//config:config TAR
+//config:	bool "tar"
+//config:	default y
+//config:	help
+//config:	  tar is an archiving program. It's commonly used with gzip to
+//config:	  create compressed archives. It's probably the most widely used
+//config:	  UNIX archive program.
+//config:
+//config:config FEATURE_TAR_CREATE
+//config:	bool "Enable archive creation"
+//config:	default y
+//config:	depends on TAR
+//config:	help
+//config:	  If you enable this option you'll be able to create
+//config:	  tar archives using the `-c' option.
+//config:
+//config:config FEATURE_TAR_AUTODETECT
+//config:	bool "Autodetect compressed tarballs"
+//config:	default y
+//config:	depends on TAR && (FEATURE_SEAMLESS_Z || FEATURE_SEAMLESS_GZ || FEATURE_SEAMLESS_BZ2 || FEATURE_SEAMLESS_LZMA || FEATURE_SEAMLESS_XZ)
+//config:	help
+//config:	  With this option tar can automatically detect compressed
+//config:	  tarballs. Currently it works only on files (not pipes etc).
+//config:
+//config:config FEATURE_TAR_FROM
+//config:	bool "Enable -X (exclude from) and -T (include from) options)"
+//config:	default y
+//config:	depends on TAR
+//config:	help
+//config:	  If you enable this option you'll be able to specify
+//config:	  a list of files to include or exclude from an archive.
+//config:
+//config:config FEATURE_TAR_OLDGNU_COMPATIBILITY
+//config:	bool "Support for old tar header format"
+//config:	default y
+//config:	depends on TAR || DPKG
+//config:	help
+//config:	  This option is required to unpack archives created in
+//config:	  the old GNU format; help to kill this old format by
+//config:	  repacking your ancient archives with the new format.
+//config:
+//config:config FEATURE_TAR_OLDSUN_COMPATIBILITY
+//config:	bool "Enable untarring of tarballs with checksums produced by buggy Sun tar"
+//config:	default y
+//config:	depends on TAR || DPKG
+//config:	help
+//config:	  This option is required to unpack archives created by some old
+//config:	  version of Sun's tar (it was calculating checksum using signed
+//config:	  arithmetic). It is said to be fixed in newer Sun tar, but "old"
+//config:	  tarballs still exist.
+//config:
+//config:config FEATURE_TAR_GNU_EXTENSIONS
+//config:	bool "Support for GNU tar extensions (long filenames)"
+//config:	default y
+//config:	depends on TAR || DPKG
+//config:	help
+//config:	  With this option busybox supports GNU long filenames and
+//config:	  linknames.
+//config:
+//config:config FEATURE_TAR_LONG_OPTIONS
+//config:	bool "Enable long options"
+//config:	default y
+//config:	depends on TAR && LONG_OPTS
+//config:	help
+//config:	  Enable use of long options, increases size by about 400 Bytes
+//config:
+//config:config FEATURE_TAR_TO_COMMAND
+//config:	bool "Support for writing to an external program"
+//config:	default y
+//config:	depends on TAR && FEATURE_TAR_LONG_OPTIONS
+//config:	help
+//config:	  If you enable this option you'll be able to instruct tar to send
+//config:	  the contents of each extracted file to the standard input of an
+//config:	  external program.
+//config:
+//config:config FEATURE_TAR_UNAME_GNAME
+//config:	bool "Enable use of user and group names"
+//config:	default y
+//config:	depends on TAR
+//config:	help
+//config:	  Enables use of user and group names in tar. This affects contents
+//config:	  listings (-t) and preserving permissions when unpacking (-p).
+//config:	  +200 bytes.
+//config:
+//config:config FEATURE_TAR_NOPRESERVE_TIME
+//config:	bool "Enable -m (do not preserve time) option"
+//config:	default y
+//config:	depends on TAR
+//config:	help
+//config:	  With this option busybox supports GNU tar -m
+//config:	  (do not preserve time) option.
+//config:
+//config:config FEATURE_TAR_SELINUX
+//config:	bool "Support for extracting SELinux labels"
+//config:	default n
+//config:	depends on TAR && SELINUX
+//config:	help
+//config:	  With this option busybox supports restoring SELinux labels
+//config:	  when extracting files from tar archives.
+
+//applet:IF_TAR(APPLET(tar, BB_DIR_BIN, BB_SUID_DROP))
+//kbuild:lib-$(CONFIG_TAR) += tar.o
+
 #include <fnmatch.h>
 #include "libbb.h"
 #include "bb_archive.h"
@@ -60,8 +162,8 @@
 
 #if !ENABLE_FEATURE_SEAMLESS_GZ && !ENABLE_FEATURE_SEAMLESS_BZ2
 /* Do not pass gzip flag to writeTarFile() */
-#define writeTarFile(tar_fd, verboseFlag, dereferenceFlag, include, exclude, gzip) \
-	writeTarFile(tar_fd, verboseFlag, dereferenceFlag, include, exclude)
+#define writeTarFile(tar_fd, verboseFlag, recurseFlags, include, exclude, gzip) \
+	writeTarFile(tar_fd, verboseFlag, recurseFlags, include, exclude)
 #endif
 
 
@@ -333,13 +435,13 @@ static int writeTarHeader(struct TarBallInfo *tbInfo,
 		 && (filesize <= 0x3fffffffffffffffffffffffLL)
 #endif
 		) {
-	                /* GNU tar uses "base-256 encoding" for very large numbers.
-	                 * Encoding is binary, with highest bit always set as a marker
-	                 * and sign in next-highest bit:
-	                 * 80 00 .. 00 - zero
-	                 * bf ff .. ff - largest positive number
-	                 * ff ff .. ff - minus 1
-	                 * c0 00 .. 00 - smallest negative number
+			/* GNU tar uses "base-256 encoding" for very large numbers.
+			 * Encoding is binary, with highest bit always set as a marker
+			 * and sign in next-highest bit:
+			 * 80 00 .. 00 - zero
+			 * bf ff .. ff - largest positive number
+			 * ff ff .. ff - minus 1
+			 * c0 00 .. 00 - smallest negative number
 			 */
 			char *p8 = header.size + sizeof(header.size);
 			do {
@@ -567,7 +669,7 @@ static void NOINLINE vfork_compressor(int tar_fd, int gzip)
 		xmove_fd(gzipDataPipe.rd, 0);
 		xmove_fd(tar_fd, 1);
 		/* exec gzip/bzip2 program/applet */
-		BB_EXECLP(zip_exec, zip_exec, "-f", NULL);
+		BB_EXECLP(zip_exec, zip_exec, "-f", (char *)0);
 		vfork_exec_errno = errno;
 		_exit(EXIT_FAILURE);
 	}
@@ -598,7 +700,7 @@ static void NOINLINE vfork_compressor(int tar_fd, int gzip)
 
 /* gcc 4.2.1 inlines it, making code bigger */
 static NOINLINE int writeTarFile(int tar_fd, int verboseFlag,
-	int dereferenceFlag, const llist_t *include,
+	int recurseFlags, const llist_t *include,
 	const llist_t *exclude, int gzip)
 {
 	int errorFlag = FALSE;
@@ -621,8 +723,7 @@ static NOINLINE int writeTarFile(int tar_fd, int verboseFlag,
 
 	/* Read the directory/files and iterate over them one at a time */
 	while (include) {
-		if (!recursive_action(include->data, ACTION_RECURSE |
-				(dereferenceFlag ? ACTION_FOLLOWLINKS : 0),
+		if (!recursive_action(include->data, recurseFlags,
 				writeFileToTarball, writeFileToTarball, &tbInfo, 0)
 		) {
 			errorFlag = TRUE;
@@ -662,7 +763,7 @@ static NOINLINE int writeTarFile(int tar_fd, int verboseFlag,
 }
 #else
 int writeTarFile(int tar_fd, int verboseFlag,
-	int dereferenceFlag, const llist_t *include,
+	int recurseFlags, const llist_t *include,
 	const llist_t *exclude, int gzip);
 #endif /* FEATURE_TAR_CREATE */
 
@@ -680,20 +781,19 @@ static llist_t *append_file_list_to_list(llist_t *list)
 			char *cp = last_char_is(line, '/');
 			if (cp > line)
 				*cp = '\0';
-			llist_add_to(&newlist, line);
+			llist_add_to_end(&newlist, line);
 		}
 		fclose(src_stream);
 	}
 	return newlist;
 }
-#else
-# define append_file_list_to_list(x) 0
 #endif
 
 //usage:#define tar_trivial_usage
 //usage:	"-[" IF_FEATURE_TAR_CREATE("c") "xt"
 //usage:	IF_FEATURE_SEAMLESS_Z("Z")
 //usage:	IF_FEATURE_SEAMLESS_GZ("z")
+//usage:	IF_FEATURE_SEAMLESS_XZ("J")
 //usage:	IF_FEATURE_SEAMLESS_BZ2("j")
 //usage:	IF_FEATURE_SEAMLESS_LZMA("a")
 //usage:	IF_FEATURE_TAR_CREATE("h")
@@ -719,6 +819,9 @@ static llist_t *append_file_list_to_list(llist_t *list)
 //usage:	)
 //usage:	IF_FEATURE_SEAMLESS_GZ(
 //usage:     "\n	z	(De)compress using gzip"
+//usage:	)
+//usage:	IF_FEATURE_SEAMLESS_XZ(
+//usage:     "\n	J	(De)compress using xz"
 //usage:	)
 //usage:	IF_FEATURE_SEAMLESS_BZ2(
 //usage:     "\n	j	(De)compress using bzip2"
@@ -749,6 +852,7 @@ static llist_t *append_file_list_to_list(llist_t *list)
 //	o	no-same-owner
 //	p	same-permissions
 //	k	keep-old
+//	no-recursion
 //	numeric-owner
 //	no-same-permissions
 //	overwrite
@@ -765,9 +869,11 @@ enum {
 	IF_FEATURE_TAR_FROM(     OPTBIT_INCLUDE_FROM,)
 	IF_FEATURE_TAR_FROM(     OPTBIT_EXCLUDE_FROM,)
 	IF_FEATURE_SEAMLESS_GZ(  OPTBIT_GZIP        ,)
-	IF_FEATURE_SEAMLESS_Z(   OPTBIT_COMPRESS    ,) // 16th bit
+	IF_FEATURE_SEAMLESS_XZ(  OPTBIT_XZ          ,) // 16th bit
+	IF_FEATURE_SEAMLESS_Z(   OPTBIT_COMPRESS    ,)
 	IF_FEATURE_TAR_NOPRESERVE_TIME(OPTBIT_NOPRESERVE_TIME,)
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS
+	OPTBIT_NORECURSION,
 	IF_FEATURE_TAR_TO_COMMAND(OPTBIT_2COMMAND   ,)
 	OPTBIT_NUMERIC_OWNER,
 	OPTBIT_NOPRESERVE_PERM,
@@ -789,14 +895,16 @@ enum {
 	OPT_INCLUDE_FROM = IF_FEATURE_TAR_FROM(     (1 << OPTBIT_INCLUDE_FROM)) + 0, // T
 	OPT_EXCLUDE_FROM = IF_FEATURE_TAR_FROM(     (1 << OPTBIT_EXCLUDE_FROM)) + 0, // X
 	OPT_GZIP         = IF_FEATURE_SEAMLESS_GZ(  (1 << OPTBIT_GZIP        )) + 0, // z
+	OPT_XZ           = IF_FEATURE_SEAMLESS_XZ(  (1 << OPTBIT_XZ          )) + 0, // J
 	OPT_COMPRESS     = IF_FEATURE_SEAMLESS_Z(   (1 << OPTBIT_COMPRESS    )) + 0, // Z
 	OPT_NOPRESERVE_TIME = IF_FEATURE_TAR_NOPRESERVE_TIME((1 << OPTBIT_NOPRESERVE_TIME)) + 0, // m
+	OPT_NORECURSION     = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NORECURSION    )) + 0, // no-recursion
 	OPT_2COMMAND        = IF_FEATURE_TAR_TO_COMMAND(  (1 << OPTBIT_2COMMAND       )) + 0, // to-command
 	OPT_NUMERIC_OWNER   = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NUMERIC_OWNER  )) + 0, // numeric-owner
 	OPT_NOPRESERVE_PERM = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_NOPRESERVE_PERM)) + 0, // no-same-permissions
 	OPT_OVERWRITE       = IF_FEATURE_TAR_LONG_OPTIONS((1 << OPTBIT_OVERWRITE      )) + 0, // overwrite
 
-	OPT_ANY_COMPRESS = (OPT_BZIP2 | OPT_LZMA | OPT_GZIP | OPT_COMPRESS),
+	OPT_ANY_COMPRESS = (OPT_BZIP2 | OPT_LZMA | OPT_GZIP | OPT_XZ | OPT_COMPRESS),
 };
 #if ENABLE_FEATURE_TAR_LONG_OPTIONS
 static const char tar_longopts[] ALIGN1 =
@@ -829,12 +937,16 @@ static const char tar_longopts[] ALIGN1 =
 # if ENABLE_FEATURE_SEAMLESS_GZ
 	"gzip\0"                No_argument       "z"
 # endif
+# if ENABLE_FEATURE_SEAMLESS_XZ
+	"xz\0"                  No_argument       "J"
+# endif
 # if ENABLE_FEATURE_SEAMLESS_Z
 	"compress\0"            No_argument       "Z"
 # endif
 # if ENABLE_FEATURE_TAR_NOPRESERVE_TIME
 	"touch\0"               No_argument       "m"
 # endif
+	"no-recursion\0"	No_argument       "\xfa"
 # if ENABLE_FEATURE_TAR_TO_COMMAND
 	"to-command\0"		Required_argument "\xfb"
 # endif
@@ -921,6 +1033,7 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		IF_FEATURE_SEAMLESS_LZMA("a"   )
 		IF_FEATURE_TAR_FROM(     "T:X:")
 		IF_FEATURE_SEAMLESS_GZ(  "z"   )
+		IF_FEATURE_SEAMLESS_XZ(  "J"   )
 		IF_FEATURE_SEAMLESS_Z(   "Z"   )
 		IF_FEATURE_TAR_NOPRESERVE_TIME("m")
 		, &base_dir // -C dir
@@ -1050,7 +1163,9 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 			zipMode = 2;
 #endif
 		/* NB: writeTarFile() closes tar_handle->src_fd */
-		return writeTarFile(tar_handle->src_fd, verboseFlag, opt & OPT_DEREFERENCE,
+		return writeTarFile(tar_handle->src_fd, verboseFlag,
+				(opt & OPT_DEREFERENCE ? ACTION_FOLLOWLINKS : 0)
+				| (opt & OPT_NORECURSION ? 0 : ACTION_RECURSE),
 				tar_handle->accept,
 				tar_handle->reject, zipMode);
 	}
@@ -1071,6 +1186,9 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		if (opt & OPT_LZMA)
 			USE_FOR_MMU(xformer = unpack_lzma_stream;)
 			USE_FOR_NOMMU(xformer_prog = "unlzma";)
+		if (opt & OPT_XZ)
+			USE_FOR_MMU(xformer = unpack_xz_stream;)
+			USE_FOR_NOMMU(xformer_prog = "unxz";)
 
 		open_transformer_with_sig(tar_handle->src_fd, xformer, xformer_prog);
 		/* Can't lseek over pipes */
@@ -1078,8 +1196,14 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		/*tar_handle->offset = 0; - already is */
 	}
 
+	/* Zero processed headers (== empty file) is not a valid tarball.
+	 * We (ab)use bb_got_signal as exitcode here,
+	 * because check_errors_in_children() uses _it_ as error indicator.
+	 */
+	bb_got_signal = EXIT_FAILURE;
+
 	while (get_header_tar(tar_handle) == EXIT_SUCCESS)
-		continue;
+		bb_got_signal = EXIT_SUCCESS; /* saw at least one header, good */
 
 	/* Check that every file that should have been extracted was */
 	while (tar_handle->accept) {
@@ -1095,8 +1219,9 @@ int tar_main(int argc UNUSED_PARAM, char **argv)
 		close(tar_handle->src_fd);
 
 	if (SEAMLESS_COMPRESSION || OPT_COMPRESS) {
+		/* Set bb_got_signal to 1 if a child died with !0 exitcode */
 		check_errors_in_children(0);
-		return bb_got_signal;
 	}
-	return EXIT_SUCCESS;
+
+	return bb_got_signal;
 }
