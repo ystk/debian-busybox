@@ -65,7 +65,7 @@ struct globals {
 } FIX_ALIASING;
 #define G (*(struct globals*)&bb_common_bufsiz1)
 struct BUG_G_too_big {
-        char BUG_G_too_big[sizeof(G) <= COMMON_BUFSIZE ? 1 : -1];
+	char BUG_G_too_big[sizeof(G) <= COMMON_BUFSIZE ? 1 : -1];
 };
 #define filter_ifindex (G.filter_ifindex)
 #define filter_qdisc (G.filter_qdisc)
@@ -391,7 +391,7 @@ static int print_class(const struct sockaddr_nl *who UNUSED_PARAM,
 		printf("root ");
 	else if (msg->tcm_parent) {
 		classid = print_tc_classid(filter_qdisc ?
-								   TC_H_MIN(msg->tcm_parent) : msg->tcm_parent);
+				TC_H_MIN(msg->tcm_parent) : msg->tcm_parent);
 		printf("parent %s ", classid);
 		if (ENABLE_FEATURE_CLEAN_UP)
 			free(classid);
@@ -418,9 +418,6 @@ static int print_class(const struct sockaddr_nl *who UNUSED_PARAM,
 static int print_filter(const struct sockaddr_nl *who UNUSED_PARAM,
 						struct nlmsghdr *hdr, void *arg UNUSED_PARAM)
 {
-	struct tcmsg *msg = NLMSG_DATA(hdr);
-	int len = hdr->nlmsg_len;
-	struct rtattr * tb[TCA_MAX+1];
 	return 0;
 }
 
@@ -526,7 +523,8 @@ int tc_main(int argc UNUSED_PARAM, char **argv)
 				duparg(*argv, "handle");
 			/* reject LONG_MIN || LONG_MAX */
 			/* TODO: for fw
-			   if ((slash = strchr(handle, '/')) != NULL)
+			slash = strchr(handle, '/');
+			if (slash != NULL)
 				   *slash = '\0';
 			 */
 			msg.tcm_handle = get_u32(*argv, "handle");

@@ -12,10 +12,11 @@
  */
 
 //config:config UDHCPC6
-//config:       bool "udhcp client for DHCPv6 (udhcpc6)"
-//config:       default n  # not yet ready
-//config:       help
-//config:         udhcpc6 is a DHCPv6 client
+//config:	bool "udhcp client for DHCPv6 (udhcpc6)"
+//config:	default n  # not yet ready
+//config:	depends on FEATURE_IPV6
+//config:	help
+//config:	  udhcpc6 is a DHCPv6 client
 
 //applet:IF_UDHCPC6(APPLET(udhcpc6, BB_DIR_USR_BIN, BB_SUID_DROP))
 
@@ -310,8 +311,8 @@ static int d6_mcast_from_client_config_ifindex(struct d6_packet *packet, uint8_t
 
 	return d6_send_raw_packet(
 		packet, (end - (uint8_t*) packet),
-		/*src*/ NULL, CLIENT_PORT,
-		/*dst*/ (struct in6_addr*)FF02__1_2, SERVER_PORT, MAC_BCAST_ADDR,
+		/*src*/ NULL, CLIENT_PORT6,
+		/*dst*/ (struct in6_addr*)FF02__1_2, SERVER_PORT6, MAC_BCAST_ADDR,
 		client_config.ifindex
 	);
 }
@@ -553,8 +554,8 @@ static NOINLINE int send_d6_renew(uint32_t xid, struct in6_addr *server_ipv6, st
 	if (server_ipv6)
 		return d6_send_kernel_packet(
 			&packet, (opt_ptr - (uint8_t*) &packet),
-			our_cur_ipv6, CLIENT_PORT,
-			server_ipv6, SERVER_PORT
+			our_cur_ipv6, CLIENT_PORT6,
+			server_ipv6, SERVER_PORT6
 		);
 	return d6_mcast_from_client_config_ifindex(&packet, opt_ptr);
 }
@@ -575,8 +576,8 @@ static int send_d6_release(struct in6_addr *server_ipv6, struct in6_addr *our_cu
 	bb_info_msg("Sending release...");
 	return d6_send_kernel_packet(
 		&packet, (opt_ptr - (uint8_t*) &packet),
-		our_cur_ipv6, CLIENT_PORT,
-		server_ipv6, SERVER_PORT
+		our_cur_ipv6, CLIENT_PORT6,
+		server_ipv6, SERVER_PORT6
 	);
 }
 
@@ -613,7 +614,7 @@ static NOINLINE int d6_recv_raw_packet(struct in6_addr *peer_ipv6
 	/* make sure its the right packet for us, and that it passes sanity checks */
 	if (packet.ip6.ip6_nxt != IPPROTO_UDP
 	 || (packet.ip6.ip6_vfc >> 4) != 6
-	 || packet.udp.dest != htons(CLIENT_PORT)
+	 || packet.udp.dest != htons(CLIENT_PORT6)
 	/* || bytes > (int) sizeof(packet) - can't happen */
 	 || packet.udp.len != packet.ip6.ip6_plen
 	) {
@@ -707,7 +708,7 @@ static int d6_raw_socket(int ifindex)
 		BPF_STMT(BPF_LDX|BPF_B|BPF_MSH, 0),
 		/* load udp destination port from halfword[header_len + 2] */
 		BPF_STMT(BPF_LD|BPF_H|BPF_IND, 2),
-		/* jump to L3 if udp dport is CLIENT_PORT, else to L4 */
+		/* jump to L3 if udp dport is CLIENT_PORT6, else to L4 */
 		BPF_JUMP(BPF_JMP|BPF_JEQ|BPF_K, 68, 0, 1),
 		/* L3: accept packet */
 		BPF_STMT(BPF_RET|BPF_K, 0xffffffff),
@@ -732,7 +733,7 @@ static int d6_raw_socket(int ifindex)
 	xbind(fd, (struct sockaddr *) &sock, sizeof(sock));
 
 #if 0
-	if (CLIENT_PORT == 68) {
+	if (CLIENT_PORT6 == 546) {
 		/* Use only if standard port is in use */
 		/* Ignoring error (kernel may lack support for this) */
 		if (setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &filter_prog,
@@ -760,7 +761,7 @@ static void change_listen_mode(int new_mode)
 		sockfd = -1;
 	}
 	if (new_mode == LISTEN_KERNEL)
-		sockfd = udhcp_listen_socket(/*INADDR_ANY,*/ CLIENT_PORT, client_config.interface);
+		sockfd = udhcp_listen_socket(/*INADDR_ANY,*/ CLIENT_PORT6, client_config.interface);
 	else if (new_mode != LISTEN_NONE)
 		sockfd = d6_raw_socket(client_config.ifindex);
 	/* else LISTEN_NONE: sockfd stays closed */
@@ -930,8 +931,8 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	fd_set rfds;
 
 	/* Default options */
-	IF_FEATURE_UDHCP_PORT(SERVER_PORT = 547;)
-	IF_FEATURE_UDHCP_PORT(CLIENT_PORT = 546;)
+	IF_FEATURE_UDHCP_PORT(SERVER_PORT6 = 547;)
+	IF_FEATURE_UDHCP_PORT(CLIENT_PORT6 = 546;)
 	client_config.interface = "eth0";
 	client_config.script = CONFIG_UDHCPC_DEFAULT_SCRIPT;
 
@@ -960,12 +961,10 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 	}
 #if ENABLE_FEATURE_UDHCP_PORT
 	if (opt & OPT_P) {
-		CLIENT_PORT = xatou16(str_P);
-		SERVER_PORT = CLIENT_PORT - 1;
+		CLIENT_PORT6 = xatou16(str_P);
+		SERVER_PORT6 = CLIENT_PORT6 + 1;
 	}
 #endif
-	if (opt & OPT_o)
-		client_config.no_default_options = 1;
 	while (list_O) {
 		char *optstr = llist_pop(&list_O);
 		unsigned n = bb_strtou(optstr, NULL, 0);
@@ -974,6 +973,16 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 			n = dhcp_optflags[n].code;
 		}
 		client_config.opt_mask[n >> 3] |= 1 << (n & 7);
+	}
+	if (!(opt & OPT_o)) {
+		/*
+		unsigned i, n;
+		for (i = 0; (n = dhcp_optflags[i].code) != 0; i++) {
+			if (dhcp_optflags[i].flags & OPTION_REQ) {
+				client_config.opt_mask[n >> 3] |= 1 << (n & 7);
+			}
+		}
+		*/
 	}
 	while (list_x) {
 		char *optstr = llist_pop(&list_x);
@@ -1065,8 +1074,8 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 		retval = 0;
 		/* If we already timed out, fall through with retval = 0, else... */
 		if ((int)tv.tv_sec > 0) {
+			log1("Waiting on select %u seconds", (int)tv.tv_sec);
 			timestamp_before_wait = (unsigned)monotonic_sec();
-			log1("Waiting on select...");
 			retval = select(max_fd + 1, &rfds, NULL, NULL, &tv);
 			if (retval < 0) {
 				/* EINTR? A signal was caught, don't panic */
@@ -1102,7 +1111,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 
 			switch (state) {
 			case INIT_SELECTING:
-				if (packet_num < discover_retries) {
+				if (!discover_retries || packet_num < discover_retries) {
 					if (packet_num == 0)
 						xid = random_xid();
 					/* multicast */
@@ -1131,7 +1140,7 @@ int udhcpc6_main(int argc UNUSED_PARAM, char **argv)
 				packet_num = 0;
 				continue;
 			case REQUESTING:
-				if (packet_num < discover_retries) {
+				if (!discover_retries || packet_num < discover_retries) {
 					/* send multicast select packet */
 					send_d6_select(xid);
 					timeout = discover_timeout;

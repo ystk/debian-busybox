@@ -13,8 +13,9 @@
 //usage:	IF_FEATURE_WGET_LONG_OPTIONS(
 //usage:       "[-c|--continue] [-s|--spider] [-q|--quiet] [-O|--output-document FILE]\n"
 //usage:       "	[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n"
-//usage:       "	[--no-check-certificate] [-U|--user-agent AGENT]"
-//usage:			IF_FEATURE_WGET_TIMEOUT(" [-T SEC]") " URL..."
+/* Since we ignore these opts, we don't show them in --help */
+/* //usage:    "	[--no-check-certificate] [--no-cache]" */
+//usage:       "	[-U|--user-agent AGENT]" IF_FEATURE_WGET_TIMEOUT(" [-T SEC]") " URL..."
 //usage:	)
 //usage:	IF_NOT_FEATURE_WGET_LONG_OPTIONS(
 //usage:       "[-csq] [-O FILE] [-Y on/off] [-P DIR] [-U AGENT]"
@@ -35,8 +36,11 @@
 
 #include "libbb.h"
 
-//#define log_io(...) bb_error_msg(__VA_ARGS__)
-#define log_io(...) ((void)0)
+#if 0
+# define log_io(...) bb_error_msg(__VA_ARGS__)
+#else
+# define log_io(...) ((void)0)
+#endif
 
 
 struct host_info {
@@ -58,16 +62,17 @@ struct globals {
 	const char *curfile;      /* Name of current file being transferred */
 	bb_progress_t pmt;
 #endif
-        char *dir_prefix;
+	char *dir_prefix;
 #if ENABLE_FEATURE_WGET_LONG_OPTIONS
-        char *post_data;
-        char *extra_headers;
+	char *post_data;
+	char *extra_headers;
 #endif
-        char *fname_out;        /* where to direct output (-O) */
-        const char *proxy_flag; /* Use proxies if env vars are set */
-        const char *user_agent; /* "User-Agent" header field */
+	char *fname_out;        /* where to direct output (-O) */
+	const char *proxy_flag; /* Use proxies if env vars are set */
+	const char *user_agent; /* "User-Agent" header field */
 #if ENABLE_FEATURE_WGET_TIMEOUT
 	unsigned timeout_seconds;
+	bool connecting;
 #endif
 	int output_fd;
 	int o_flags;
@@ -82,8 +87,10 @@ struct globals {
 } FIX_ALIASING;
 #define G (*ptr_to_globals)
 #define INIT_G() do { \
-        SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
-	IF_FEATURE_WGET_TIMEOUT(G.timeout_seconds = 900;) \
+	SET_PTR_TO_GLOBALS(xzalloc(sizeof(G))); \
+} while (0)
+#define FINI_G() do { \
+	FREE_PTR_TO_GLOBALS(); \
 } while (0)
 
 
@@ -191,13 +198,27 @@ static char* sanitize_string(char *s)
 	return s;
 }
 
+#if ENABLE_FEATURE_WGET_TIMEOUT
+static void alarm_handler(int sig UNUSED_PARAM)
+{
+	/* This is theoretically unsafe (uses stdio and malloc in signal handler) */
+	if (G.connecting)
+		bb_error_msg_and_die("download timed out");
+}
+#endif
+
 static FILE *open_socket(len_and_sockaddr *lsa)
 {
+	int fd;
 	FILE *fp;
+
+	IF_FEATURE_WGET_TIMEOUT(alarm(G.timeout_seconds); G.connecting = 1;)
+	fd = xconnect_stream(lsa);
+	IF_FEATURE_WGET_TIMEOUT(G.connecting = 0;)
 
 	/* glibc 2.4 seems to try seeking on it - ??! */
 	/* hopefully it understands what ESPIPE means... */
-	fp = fdopen(xconnect_stream(lsa), "r+");
+	fp = fdopen(fd, "r+");
 	if (fp == NULL)
 		bb_perror_msg_and_die(bb_msg_memory_exhausted);
 
@@ -205,6 +226,7 @@ static FILE *open_socket(len_and_sockaddr *lsa)
 }
 
 /* Returns '\n' if it was seen, else '\0'. Trims at first '\r' or '\n' */
+/* FIXME: does not respect FEATURE_WGET_TIMEOUT and -T N: */
 static char fgets_and_trim(FILE *fp)
 {
 	char c;
@@ -252,14 +274,21 @@ static void parse_url(const char *src_url, struct host_info *h)
 	free(h->allocated);
 	h->allocated = url = xstrdup(src_url);
 
-	if (strncmp(url, "http://", 7) == 0) {
-		h->port = bb_lookup_port("http", "tcp", 80);
-		h->host = url + 7;
-		h->is_ftp = 0;
-	} else if (strncmp(url, "ftp://", 6) == 0) {
+	if (strncmp(url, "ftp://", 6) == 0) {
 		h->port = bb_lookup_port("ftp", "tcp", 21);
 		h->host = url + 6;
 		h->is_ftp = 1;
+	} else
+	if (strncmp(url, "http://", 7) == 0) {
+		h->host = url + 7;
+ http:
+		h->port = bb_lookup_port("http", "tcp", 80);
+		h->is_ftp = 0;
+	} else
+	if (!strstr(url, "//")) {
+		// GNU wget is user-friendly and falls back to http://
+		h->host = url;
+		goto http;
 	} else
 		bb_error_msg_and_die("not an http or ftp url: %s", sanitize_string(url));
 
@@ -316,8 +345,6 @@ static char *gethdr(FILE *fp)
 	char *s, *hdrval;
 	int c;
 
-	/* *istrunc = 0; */
-
 	/* retrieve header line */
 	c = fgets_and_trim(fp);
 
@@ -326,8 +353,16 @@ static char *gethdr(FILE *fp)
 		return NULL;
 
 	/* convert the header name to lower case */
-	for (s = G.wget_buf; isalnum(*s) || *s == '-' || *s == '.'; ++s) {
-		/* tolower for "A-Z", no-op for "0-9a-z-." */
+	for (s = G.wget_buf; isalnum(*s) || *s == '-' || *s == '.' || *s == '_'; ++s) {
+		/*
+		 * No-op for 20-3f and 60-7f. "0-9a-z-." are in these ranges.
+		 * 40-5f range ("@A-Z[\]^_") maps to 60-7f.
+		 * "A-Z" maps to "a-z".
+		 * "@[\]" can't occur in header names.
+		 * "^_" maps to "~,DEL" (which is wrong).
+		 * "^" was never seen yet, "_" was seen from web.archive.org
+		 * (x-archive-orig-x_commoncrawl_Signature: HEXSTRING).
+		 */
 		*s |= 0x20;
 	}
 
@@ -346,6 +381,15 @@ static char *gethdr(FILE *fp)
 	}
 
 	return hdrval;
+}
+
+static void reset_beg_range_to_zero(void)
+{
+	bb_error_msg("restart failed");
+	G.beg_range = 0;
+	xlseek(G.output_fd, 0, SEEK_SET);
+	/* Done at the end instead: */
+	/* ftruncate(G.output_fd, 0); */
 }
 
 static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_sockaddr *lsa)
@@ -415,10 +459,12 @@ static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_
 
 	*dfpp = open_socket(lsa);
 
-	if (G.beg_range) {
+	if (G.beg_range != 0) {
 		sprintf(G.wget_buf, "REST %"OFF_FMT"u", G.beg_range);
 		if (ftpcmd(G.wget_buf, NULL, sfp) == 350)
 			G.content_len -= G.beg_range;
+		else
+			reset_beg_range_to_zero();
 	}
 
 	if (ftpcmd("RETR ", target->path, sfp) > 150)
@@ -431,7 +477,7 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 {
 #if ENABLE_FEATURE_WGET_STATUSBAR || ENABLE_FEATURE_WGET_TIMEOUT
 # if ENABLE_FEATURE_WGET_TIMEOUT
-	unsigned second_cnt;
+	unsigned second_cnt = G.timeout_seconds;
 # endif
 	struct pollfd polldata;
 
@@ -452,7 +498,7 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 		 * which messes up progress bar and/or timeout logic.
 		 * Because of nonblocking I/O, we need to dance
 		 * very carefully around EAGAIN. See explanation at
-		 * clearerr() call.
+		 * clearerr() calls.
 		 */
 		ndelay_on(polldata.fd);
 #endif
@@ -460,32 +506,7 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 			int n;
 			unsigned rdsz;
 
-			rdsz = sizeof(G.wget_buf);
-			if (G.got_clen) {
-				if (G.content_len < (off_t)sizeof(G.wget_buf)) {
-					if ((int)G.content_len <= 0)
-						break;
-					rdsz = (unsigned)G.content_len;
-				}
-			}
-
 #if ENABLE_FEATURE_WGET_STATUSBAR || ENABLE_FEATURE_WGET_TIMEOUT
-# if ENABLE_FEATURE_WGET_TIMEOUT
-			second_cnt = G.timeout_seconds;
-# endif
-			while (1) {
-				if (safe_poll(&polldata, 1, 1000) != 0)
-					break; /* error, EOF, or data is available */
-# if ENABLE_FEATURE_WGET_TIMEOUT
-				if (second_cnt != 0 && --second_cnt == 0) {
-					progress_meter(PROGRESS_END);
-					bb_error_msg_and_die("download timed out");
-				}
-# endif
-				/* Needed for "stalled" indicator */
-				progress_meter(PROGRESS_BUMP);
-			}
-
 			/* fread internally uses read loop, which in our case
 			 * is usually exited when we get EAGAIN.
 			 * In this case, libc sets error marker on the stream.
@@ -495,36 +516,71 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 			 * into if (n <= 0) ...
 			 */
 			clearerr(dfp);
-			errno = 0;
 #endif
+			errno = 0;
+			rdsz = sizeof(G.wget_buf);
+			if (G.got_clen) {
+				if (G.content_len < (off_t)sizeof(G.wget_buf)) {
+					if ((int)G.content_len <= 0)
+						break;
+					rdsz = (unsigned)G.content_len;
+				}
+			}
 			n = fread(G.wget_buf, 1, rdsz, dfp);
-			/* man fread:
+
+			if (n > 0) {
+				xwrite(G.output_fd, G.wget_buf, n);
+#if ENABLE_FEATURE_WGET_STATUSBAR
+				G.transferred += n;
+#endif
+				if (G.got_clen) {
+					G.content_len -= n;
+					if (G.content_len == 0)
+						break;
+				}
+#if ENABLE_FEATURE_WGET_TIMEOUT
+				second_cnt = G.timeout_seconds;
+#endif
+				continue;
+			}
+
+			/* n <= 0.
+			 * man fread:
 			 * If error occurs, or EOF is reached, the return value
 			 * is a short item count (or zero).
 			 * fread does not distinguish between EOF and error.
 			 */
-			if (n <= 0) {
-#if ENABLE_FEATURE_WGET_STATUSBAR || ENABLE_FEATURE_WGET_TIMEOUT
-				if (errno == EAGAIN) /* poll lied, there is no data? */
-					continue; /* yes */
-#endif
-				if (ferror(dfp))
+			if (errno != EAGAIN) {
+				if (ferror(dfp)) {
+					progress_meter(PROGRESS_END);
 					bb_perror_msg_and_die(bb_msg_read_error);
+				}
 				break; /* EOF, not error */
 			}
 
-			xwrite(G.output_fd, G.wget_buf, n);
-
-#if ENABLE_FEATURE_WGET_STATUSBAR
-			G.transferred += n;
+#if ENABLE_FEATURE_WGET_STATUSBAR || ENABLE_FEATURE_WGET_TIMEOUT
+			/* It was EAGAIN. There is no data. Wait up to one second
+			 * then abort if timed out, or update the bar and try reading again.
+			 */
+			if (safe_poll(&polldata, 1, 1000) == 0) {
+# if ENABLE_FEATURE_WGET_TIMEOUT
+				if (second_cnt != 0 && --second_cnt == 0) {
+					progress_meter(PROGRESS_END);
+					bb_error_msg_and_die("download timed out");
+				}
+# endif
+				/* We used to loop back to poll here,
+				 * but there is no great harm in letting fread
+				 * to try reading anyway.
+				 */
+			}
+			/* Need to do it _every_ second for "stalled" indicator
+			 * to be shown properly.
+			 */
 			progress_meter(PROGRESS_BUMP);
 #endif
-			if (G.got_clen) {
-				G.content_len -= n;
-				if (G.content_len == 0)
-					break;
-			}
-		}
+		} /* while (reading data) */
+
 #if ENABLE_FEATURE_WGET_STATUSBAR || ENABLE_FEATURE_WGET_TIMEOUT
 		clearerr(dfp);
 		ndelay_off(polldata.fd); /* else fgets can get very unhappy */
@@ -540,6 +596,24 @@ static void NOINLINE retrieve_file_data(FILE *dfp)
 		if (G.content_len == 0)
 			break; /* all done! */
 		G.got_clen = 1;
+		/*
+		 * Note that fgets may result in some data being buffered in dfp.
+		 * We loop back to fread, which will retrieve this data.
+		 * Also note that code has to be arranged so that fread
+		 * is done _before_ one-second poll wait - poll doesn't know
+		 * about stdio buffering and can result in spurious one second waits!
+		 */
+	}
+
+	/* If -c failed, we restart from the beginning,
+	 * but we do not truncate file then, we do it only now, at the end.
+	 * This lets user to ^C if his 99% complete 10 GB file download
+	 * failed to restart *without* losing the almost complete file.
+	 */
+	{
+		off_t pos = lseek(G.output_fd, 0, SEEK_CUR);
+		if (pos != (off_t)-1)
+			ftruncate(G.output_fd, pos);
 	}
 
 	/* Draw full bar and free its resources */
@@ -597,13 +671,11 @@ static void download_one_url(const char *url)
 		if (G.fname_out[0] == '/' || !G.fname_out[0])
 			G.fname_out = (char*)"index.html";
 		/* -P DIR is considered only if there was no -O FILE */
+		if (G.dir_prefix)
+			G.fname_out = fname_out_alloc = concat_path_file(G.dir_prefix, G.fname_out);
 		else {
-			if (G.dir_prefix)
-				G.fname_out = fname_out_alloc = concat_path_file(G.dir_prefix, G.fname_out);
-			else {
-				/* redirects may free target.path later, need to make a copy */
-				G.fname_out = fname_out_alloc = xstrdup(G.fname_out);
-			}
+			/* redirects may free target.path later, need to make a copy */
+			G.fname_out = fname_out_alloc = xstrdup(G.fname_out);
 		}
 	}
 #if ENABLE_FEATURE_WGET_STATUSBAR
@@ -675,7 +747,7 @@ static void download_one_url(const char *url)
 		}
 #endif
 
-		if (G.beg_range)
+		if (G.beg_range != 0)
 			fprintf(sfp, "Range: bytes=%"OFF_FMT"u-\r\n", G.beg_range);
 
 #if ENABLE_FEATURE_WGET_LONG_OPTIONS
@@ -742,15 +814,23 @@ However, in real world it was observed that some web servers
 (e.g. Boa/0.94.14rc21) simply use code 204 when file size is zero.
 */
 		case 204:
+			if (G.beg_range != 0) {
+				/* "Range:..." was not honored by the server.
+				 * Restart download from the beginning.
+				 */
+				reset_beg_range_to_zero();
+			}
 			break;
 		case 300:  /* redirection */
 		case 301:
 		case 302:
 		case 303:
 			break;
-		case 206:
-			if (G.beg_range)
+		case 206: /* Partial Content */
+			if (G.beg_range != 0)
+				/* "Range:..." worked. Good. */
 				break;
+			/* Partial Content even though we did not ask for it??? */
 			/* fall through */
 		default:
 			bb_error_msg_and_die("server returned error: %s", sanitize_string(G.wget_buf));
@@ -878,6 +958,8 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 		"post-data\0"        Required_argument "\xfd"
 		/* Ignored (we don't do ssl) */
 		"no-check-certificate\0" No_argument   "\xfc"
+		/* Ignored (we don't support caching) */
+		"no-cache\0"         No_argument       "\xfb"
 		;
 #endif
 
@@ -887,7 +969,10 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 
 	INIT_G();
 
-	IF_FEATURE_WGET_TIMEOUT(G.timeout_seconds = 900;)
+#if ENABLE_FEATURE_WGET_TIMEOUT
+	G.timeout_seconds = 900;
+	signal(SIGALRM, alarm_handler);
+#endif
 	G.proxy_flag = "on";   /* use proxies if env vars are set */
 	G.user_agent = "Wget"; /* "User-Agent" header field */
 
@@ -937,6 +1022,11 @@ int wget_main(int argc UNUSED_PARAM, char **argv)
 
 	if (G.output_fd >= 0)
 		xclose(G.output_fd);
+
+#if ENABLE_FEATURE_CLEAN_UP && ENABLE_FEATURE_WGET_LONG_OPTIONS
+	free(G.extra_headers);
+#endif
+	FINI_G();
 
 	return EXIT_SUCCESS;
 }

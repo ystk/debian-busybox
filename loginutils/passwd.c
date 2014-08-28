@@ -15,11 +15,7 @@
 
 #include "libbb.h"
 #include <syslog.h>
-
-static void nuke_str(char *str)
-{
-	if (str) memset(str, 0, strlen(str));
-}
+#include <sys/resource.h> /* setrlimit */
 
 static char* new_password(const struct passwd *pw, uid_t myuid, const char *algo)
 {

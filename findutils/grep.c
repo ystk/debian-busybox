@@ -344,11 +344,37 @@ static int grep_file(FILE *file)
 		while (pattern_ptr) {
 			gl = (grep_list_data_t *)pattern_ptr->data;
 			if (FGREP_FLAG) {
-				found |= (((option_mask32 & OPT_i)
-					? strcasestr(line, gl->pattern)
-					: strstr(line, gl->pattern)
-					) != NULL);
+				char *match;
+				char *str = line;
+ opt_f_again:
+				match = ((option_mask32 & OPT_i)
+					? strcasestr(str, gl->pattern)
+					: strstr(str, gl->pattern)
+					);
+				if (match) {
+					if (option_mask32 & OPT_x) {
+						if (match != str)
+							goto opt_f_not_found;
+						if (str[strlen(gl->pattern)] != '\0')
+							goto opt_f_not_found;
+					} else
+					if (option_mask32 & OPT_w) {
+						char c = (match != str) ? match[-1] : ' ';
+						if (!isalnum(c) && c != '_') {
+							c = match[strlen(gl->pattern)];
+							if (!c || (!isalnum(c) && c != '_'))
+								goto opt_f_found;
+						}
+						str = match + 1;
+						goto opt_f_again;
+					}
+ opt_f_found:
+					found = 1;
+ opt_f_not_found: ;
+				}
 			} else {
+				char *match_at;
+
 				if (!(gl->flg_mem_alocated_compiled & COMPILED)) {
 					gl->flg_mem_alocated_compiled |= COMPILED;
 #if !ENABLE_EXTRA_COMPAT
@@ -364,28 +390,35 @@ static int grep_file(FILE *file)
 				gl->matched_range.rm_so = 0;
 				gl->matched_range.rm_eo = 0;
 #endif
+				match_at = line;
+ opt_w_again:
 				if (
 #if !ENABLE_EXTRA_COMPAT
-					regexec(&gl->compiled_regex, line, 1, &gl->matched_range, 0) == 0
+					regexec(&gl->compiled_regex, match_at, 1, &gl->matched_range, 0) == 0
 #else
-					re_search(&gl->compiled_regex, line, line_len,
+					re_search(&gl->compiled_regex, match_at, line_len,
 							/*start:*/ 0, /*range:*/ line_len,
 							&gl->matched_range) >= 0
 #endif
 				) {
 					if (option_mask32 & OPT_x) {
 						found = (gl->matched_range.rm_so == 0
-						         && line[gl->matched_range.rm_eo] == '\0');
-					} else if (!(option_mask32 & OPT_w)) {
+						         && match_at[gl->matched_range.rm_eo] == '\0');
+					} else
+					if (!(option_mask32 & OPT_w)) {
 						found = 1;
 					} else {
 						char c = ' ';
 						if (gl->matched_range.rm_so)
-							c = line[gl->matched_range.rm_so - 1];
+							c = match_at[gl->matched_range.rm_so - 1];
 						if (!isalnum(c) && c != '_') {
-							c = line[gl->matched_range.rm_eo];
-							if (!c || (!isalnum(c) && c != '_'))
+							c = match_at[gl->matched_range.rm_eo];
+							if (!c || (!isalnum(c) && c != '_')) {
 								found = 1;
+							} else {
+								match_at += gl->matched_range.rm_eo;
+								goto opt_w_again;
+							}
 						}
 					}
 				}
@@ -638,7 +671,7 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 
 	if (opts & OPT_C) {
 		/* -C unsets prev -A and -B, but following -A or -B
-		   may override it */
+		 * may override it */
 		if (!(opts & OPT_A)) /* not overridden */
 			lines_after = Copt;
 		if (!(opts & OPT_B)) /* not overridden */
@@ -683,7 +716,7 @@ int grep_main(int argc UNUSED_PARAM, char **argv)
 		option_mask32 |= OPT_F;
 
 #if !ENABLE_EXTRA_COMPAT
-	if (!(option_mask32 & (OPT_o | OPT_w)))
+	if (!(option_mask32 & (OPT_o | OPT_w | OPT_x)))
 		reflags = REG_NOSUB;
 #endif
 

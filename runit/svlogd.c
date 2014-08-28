@@ -142,7 +142,6 @@ log message, you can use a pattern like this instead
 //usage:   "\n""+,-PATTERN - (de)select line for logging"
 //usage:   "\n""E,ePATTERN - (de)select line for stderr"
 
-#include <sys/poll.h>
 #include <sys/file.h>
 #include "libbb.h"
 #include "runit_lib.h"
@@ -601,12 +600,12 @@ static int buffer_pwrite(int n, char *s, unsigned len)
 
 			while (fchdir(ld->fddir) == -1)
 				pause2cannot("change directory, want remove old logfile",
-							 ld->name);
+							ld->name);
 			oldest[0] = 'A';
 			oldest[1] = oldest[27] = '\0';
 			while (!(d = opendir(".")))
 				pause2cannot("open directory, want remove old logfile",
-							 ld->name);
+							ld->name);
 			errno = 0;
 			while ((f = readdir(d)))
 				if ((f->d_name[0] == '@') && (strlen(f->d_name) == 27)) {
@@ -745,11 +744,6 @@ static NOINLINE unsigned logdir_open(struct logdir *ld, const char *fn)
 				ld->inst = new;
 				break;
 			case 's': {
-				static const struct suffix_mult km_suffixes[] = {
-					{ "k", 1024 },
-					{ "m", 1024*1024 },
-					{ "", 0 }
-				};
 				ld->sizemax = xatou_sfx(&s[1], km_suffixes);
 				break;
 			}

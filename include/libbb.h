@@ -32,12 +32,12 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <string.h>
-/* There are two incompatible basename's, let not use them! */
+/* There are two incompatible basename's, let's not use them! */
 /* See the dirname/basename man page for details */
 #include <libgen.h> /* dirname,basename */
 #undef basename
 #define basename dont_use_basename
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -333,6 +333,7 @@ enum {	/* DO NOT CHANGE THESE VALUES!  cp.c, mv.c, install.c depend on them. */
 	FILEUTILS_PRESERVE_SECURITY_CONTEXT = 1 << 9, /* -c */
 	FILEUTILS_SET_SECURITY_CONTEXT = 1 << 10,
 #endif
+	FILEUTILS_IGNORE_CHMOD_ERR = 1 << 11,
 };
 #define FILEUTILS_CP_OPTSTR "pdRfilsLH" IF_SELINUX("c")
 extern int remove_file(const char *path, int flags) FAST_FUNC;
@@ -385,6 +386,7 @@ char *bb_get_last_path_component_nostrip(const char *path) FAST_FUNC;
 const char *bb_basename(const char *name) FAST_FUNC;
 /* NB: can violate const-ness (similarly to strchr) */
 char *last_char_is(const char *s, int c) FAST_FUNC;
+const char* endofname(const char *name) FAST_FUNC;
 
 void ndelay_on(int fd) FAST_FUNC;
 void ndelay_off(int fd) FAST_FUNC;
@@ -459,6 +461,8 @@ void record_signo(int signo); /* not FAST_FUNC! */
 
 void xsetgid(gid_t gid) FAST_FUNC;
 void xsetuid(uid_t uid) FAST_FUNC;
+void xsetegid(gid_t egid) FAST_FUNC;
+void xseteuid(uid_t euid) FAST_FUNC;
 void xchdir(const char *path) FAST_FUNC;
 void xchroot(const char *path) FAST_FUNC;
 void xsetenv(const char *key, const char *value) FAST_FUNC;
@@ -467,11 +471,12 @@ void bb_unsetenv_and_free(char *key) FAST_FUNC;
 void xunlink(const char *pathname) FAST_FUNC;
 void xstat(const char *pathname, struct stat *buf) FAST_FUNC;
 void xfstat(int fd, struct stat *buf, const char *errmsg) FAST_FUNC;
+int open3_or_warn(const char *pathname, int flags, int mode) FAST_FUNC;
+int open_or_warn(const char *pathname, int flags) FAST_FUNC;
+int xopen3(const char *pathname, int flags, int mode) FAST_FUNC;
 int xopen(const char *pathname, int flags) FAST_FUNC;
 int xopen_nonblocking(const char *pathname) FAST_FUNC;
-int xopen3(const char *pathname, int flags, int mode) FAST_FUNC;
-int open_or_warn(const char *pathname, int flags) FAST_FUNC;
-int open3_or_warn(const char *pathname, int flags, int mode) FAST_FUNC;
+int xopen_as_uid_gid(const char *pathname, int flags, uid_t u, gid_t g) FAST_FUNC;
 int open_or_warn_stdin(const char *pathname) FAST_FUNC;
 int xopen_stdin(const char *pathname) FAST_FUNC;
 void xrename(const char *oldpath, const char *newpath) FAST_FUNC;
@@ -481,9 +486,9 @@ int xmkstemp(char *template) FAST_FUNC;
 off_t fdlength(int fd) FAST_FUNC;
 
 uoff_t FAST_FUNC get_volume_size_in_bytes(int fd,
-                const char *override,
-                unsigned override_units,
-                int extend);
+		const char *override,
+		unsigned override_units,
+		int extend);
 
 void xpipe(int filedes[2]) FAST_FUNC;
 /* In this form code with pipes is much more readable */
@@ -521,7 +526,8 @@ struct BUG_too_small {
 
 void parse_datestr(const char *date_str, struct tm *ptm) FAST_FUNC;
 time_t validate_tm_time(const char *date_str, struct tm *ptm) FAST_FUNC;
-
+char *strftime_HHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
+char *strftime_YYYYMMDDHHMMSS(char *buf, unsigned len, time_t *tp) FAST_FUNC;
 
 int xsocket(int domain, int type, int protocol) FAST_FUNC;
 void xbind(int sockfd, struct sockaddr *my_addr, socklen_t addrlen) FAST_FUNC;
@@ -675,6 +681,13 @@ const char* FAST_FUNC printable_string(uni_stat_t *stats, const char *str);
  * else it is printed as-is (except for ch = 0x9b) */
 enum { PRINTABLE_META = 0x100 };
 void fputc_printable(int ch, FILE *file) FAST_FUNC;
+/* Return a string that is the printable representation of character ch.
+ * Buffer must hold at least four characters. */
+enum {
+	VISIBLE_ENDLINE   = 1 << 0,
+	VISIBLE_SHOW_TABS = 1 << 1,
+};
+void visible(unsigned ch, char *buf, int flags) FAST_FUNC;
 
 /* dmalloc will redefine these to it's own implementation. It is safe
  * to have the prototypes here unconditionally.  */
@@ -795,7 +808,6 @@ void qsort_string_vector(char **sv, unsigned count) FAST_FUNC;
 int safe_poll(struct pollfd *ufds, nfds_t nfds, int timeout_ms) FAST_FUNC;
 
 char *safe_gethostname(void) FAST_FUNC;
-char *safe_getdomainname(void) FAST_FUNC;
 
 /* Convert each alpha char in str to lower-case */
 char* str_tolower(char *str) FAST_FUNC;
@@ -806,8 +818,8 @@ char *itoa(int n) FAST_FUNC;
 char *utoa_to_buf(unsigned n, char *buf, unsigned buflen) FAST_FUNC;
 char *itoa_to_buf(int n, char *buf, unsigned buflen) FAST_FUNC;
 /* Intelligent formatters of bignums */
-void smart_ulltoa4(unsigned long long ul, char buf[4], const char *scale) FAST_FUNC;
-void smart_ulltoa5(unsigned long long ul, char buf[5], const char *scale) FAST_FUNC;
+char *smart_ulltoa4(unsigned long long ul, char buf[4], const char *scale) FAST_FUNC;
+char *smart_ulltoa5(unsigned long long ul, char buf[5], const char *scale) FAST_FUNC;
 /* If block_size == 0, display size without fractional part,
  * else display (size * block_size) with one decimal digit.
  * If display_unit == 0, show value no bigger than 1024 with suffix (K,M,G...),
@@ -830,6 +842,9 @@ struct suffix_mult {
 	char suffix[4];
 	unsigned mult;
 };
+extern const struct suffix_mult bkm_suffixes[];
+#define km_suffixes (bkm_suffixes + 1)
+
 #include "xatonum.h"
 /* Specialized: */
 
@@ -1107,9 +1122,6 @@ void bb_displayroutes(int noresolve, int netstatfmt) FAST_FUNC;
 
 
 /* Networking */
-int create_icmp_socket(void) FAST_FUNC;
-int create_icmp6_socket(void) FAST_FUNC;
-/* interface.c */
 /* This structure defines protocol families and their handlers. */
 struct aftype {
 	const char *name;
@@ -1138,6 +1150,7 @@ struct hwtype {
 };
 extern smallint interface_opt_a;
 int display_interfaces(char *ifname) FAST_FUNC;
+int in_ether(const char *bufp, struct sockaddr *sap) FAST_FUNC;
 #if ENABLE_FEATURE_HWIB
 int in_ib(const char *bufp, struct sockaddr *sap) FAST_FUNC;
 #else
@@ -1248,7 +1261,7 @@ extern void run_shell(const char *shell, int loginshell, const char *command, co
  * Note that getpwuid result might need xstrdup'ing
  * if there is a possibility of intervening getpwxxx() calls.
  */
-const char *get_shell_name(void);
+const char *get_shell_name(void) FAST_FUNC;
 
 #if ENABLE_SELINUX
 extern void renew_current_security_context(void) FAST_FUNC;
@@ -1286,8 +1299,11 @@ int sd_listen_fds(void);
 #define SETUP_ENV_CHANGEENV (1 << 0)
 #define SETUP_ENV_CLEARENV  (1 << 1)
 #define SETUP_ENV_TO_TMP    (1 << 2)
-extern void setup_environment(const char *shell, int flags, const struct passwd *pw) FAST_FUNC;
-extern int correct_password(const struct passwd *pw) FAST_FUNC;
+#define SETUP_ENV_NO_CHDIR  (1 << 4)
+void setup_environment(const char *shell, int flags, const struct passwd *pw) FAST_FUNC;
+void nuke_str(char *str) FAST_FUNC;
+int ask_and_check_password_extended(const struct passwd *pw, int timeout, const char *prompt) FAST_FUNC;
+int ask_and_check_password(const struct passwd *pw) FAST_FUNC;
 /* Returns a malloced string */
 #if !ENABLE_USE_BB_CRYPT
 #define pw_encrypt(clear, salt, cleanup) pw_encrypt(clear, salt)
@@ -1433,7 +1449,7 @@ void read_key_ungets(char *buffer, const char *str, unsigned len) FAST_FUNC;
 /* It's NOT just ENABLEd or disabled. It's a number: */
 # if defined CONFIG_FEATURE_EDITING_HISTORY && CONFIG_FEATURE_EDITING_HISTORY > 0
 #  define MAX_HISTORY (CONFIG_FEATURE_EDITING_HISTORY + 0)
-unsigned size_from_HISTFILESIZE(const char *hp);
+unsigned size_from_HISTFILESIZE(const char *hp) FAST_FUNC;
 # else
 #  define MAX_HISTORY 0
 # endif
@@ -1475,6 +1491,7 @@ line_input_t *new_line_input_t(int flags) FAST_FUNC;
  * >0 length of input string, including terminating '\n'
  */
 int read_line_input(line_input_t *st, const char *prompt, char *command, int maxsize, int timeout) FAST_FUNC;
+void show_history(const line_input_t *st) FAST_FUNC;
 # if ENABLE_FEATURE_EDITING_SAVE_ON_EXIT
 void save_history(line_input_t *st);
 # endif
@@ -1515,7 +1532,7 @@ struct smaprec {
 	procps_read_smaps(pid, total)
 #endif
 int FAST_FUNC procps_read_smaps(pid_t pid, struct smaprec *total,
-		      void (*cb)(struct smaprec *, void *), void *data);
+		void (*cb)(struct smaprec *, void *), void *data);
 
 typedef struct procps_status_t {
 	DIR *dir;
@@ -1611,8 +1628,8 @@ unsigned get_cpu_count(void) FAST_FUNC;
 char *percent_decode_in_place(char *str, int strict) FAST_FUNC;
 
 
-extern const char bb_uuenc_tbl_base64[];
-extern const char bb_uuenc_tbl_std[];
+extern const char bb_uuenc_tbl_base64[] ALIGN1;
+extern const char bb_uuenc_tbl_std[] ALIGN1;
 void bb_uuencode(char *store, const void *s, int length, const char *tbl) FAST_FUNC;
 enum {
 	BASE64_FLAG_UU_STOP = 0x100,
@@ -1635,8 +1652,12 @@ typedef struct sha512_ctx_t {
 	uint64_t hash[8];
 	uint8_t wbuffer[128]; /* always correctly aligned for uint64_t */
 } sha512_ctx_t;
+typedef struct sha3_ctx_t {
+	uint64_t state[25];
+	unsigned bytes_queued;
+} sha3_ctx_t;
 void md5_begin(md5_ctx_t *ctx) FAST_FUNC;
-void md5_hash(md5_ctx_t *ctx, const void *data, size_t length) FAST_FUNC;
+void md5_hash(md5_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 void md5_end(md5_ctx_t *ctx, void *resbuf) FAST_FUNC;
 void sha1_begin(sha1_ctx_t *ctx) FAST_FUNC;
 #define sha1_hash md5_hash
@@ -1647,6 +1668,9 @@ void sha256_begin(sha256_ctx_t *ctx) FAST_FUNC;
 void sha512_begin(sha512_ctx_t *ctx) FAST_FUNC;
 void sha512_hash(sha512_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
 void sha512_end(sha512_ctx_t *ctx, void *resbuf) FAST_FUNC;
+void sha3_begin(sha3_ctx_t *ctx) FAST_FUNC;
+void sha3_hash(sha3_ctx_t *ctx, const void *buffer, size_t len) FAST_FUNC;
+void sha3_end(sha3_ctx_t *ctx, void *resbuf) FAST_FUNC;
 
 extern uint32_t *global_crc32_table;
 uint32_t *crc32_filltable(uint32_t *tbl256, int endian) FAST_FUNC;
@@ -1693,24 +1717,24 @@ extern const char *applet_name;
  * Therefore now we use #defines.
  */
 /* "BusyBox vN.N.N (timestamp or extra_version)" */
-extern const char bb_banner[];
-extern const char bb_msg_memory_exhausted[];
-extern const char bb_msg_invalid_date[];
+extern const char bb_banner[] ALIGN1;
+extern const char bb_msg_memory_exhausted[] ALIGN1;
+extern const char bb_msg_invalid_date[] ALIGN1;
 #define bb_msg_read_error "read error"
 #define bb_msg_write_error "write error"
-extern const char bb_msg_unknown[];
-extern const char bb_msg_can_not_create_raw_socket[];
-extern const char bb_msg_perm_denied_are_you_root[];
-extern const char bb_msg_you_must_be_root[];
-extern const char bb_msg_requires_arg[];
-extern const char bb_msg_invalid_arg[];
-extern const char bb_msg_standard_input[];
-extern const char bb_msg_standard_output[];
+extern const char bb_msg_unknown[] ALIGN1;
+extern const char bb_msg_can_not_create_raw_socket[] ALIGN1;
+extern const char bb_msg_perm_denied_are_you_root[] ALIGN1;
+extern const char bb_msg_you_must_be_root[] ALIGN1;
+extern const char bb_msg_requires_arg[] ALIGN1;
+extern const char bb_msg_invalid_arg[] ALIGN1;
+extern const char bb_msg_standard_input[] ALIGN1;
+extern const char bb_msg_standard_output[] ALIGN1;
 
 /* NB: (bb_hexdigits_upcase[i] | 0x20) -> lowercase hex digit */
-extern const char bb_hexdigits_upcase[];
+extern const char bb_hexdigits_upcase[] ALIGN1;
 
-extern const char bb_path_wtmp_file[];
+extern const char bb_path_wtmp_file[] ALIGN1;
 
 /* Busybox mount uses either /proc/mounts or /etc/mtab to
  * get the list of currently mounted filesystems */
@@ -1724,10 +1748,10 @@ extern const char bb_path_wtmp_file[];
 #define bb_path_motd_file "/etc/motd"
 
 #define bb_dev_null "/dev/null"
-extern const char bb_busybox_exec_path[];
+extern const char bb_busybox_exec_path[] ALIGN1;
 /* util-linux manpage says /sbin:/bin:/usr/sbin:/usr/bin,
  * but I want to save a few bytes here */
-extern const char bb_PATH_root_path[]; /* "PATH=/sbin:/usr/sbin:/bin:/usr/bin" */
+extern const char bb_PATH_root_path[] ALIGN1; /* "PATH=/sbin:/usr/sbin:/bin:/usr/bin" */
 #define bb_default_root_path (bb_PATH_root_path + sizeof("PATH"))
 #define bb_default_path      (bb_PATH_root_path + sizeof("PATH=/sbin:/usr/sbin"))
 
@@ -1751,13 +1775,18 @@ extern struct globals *const ptr_to_globals;
 	(*(struct globals**)&ptr_to_globals) = (void*)(x); \
 	barrier(); \
 } while (0)
+#define FREE_PTR_TO_GLOBALS() do { \
+	if (ENABLE_FEATURE_CLEAN_UP) { \
+		free(ptr_to_globals); \
+	} \
+} while (0)
 
 /* You can change LIBBB_DEFAULT_LOGIN_SHELL, but don't use it,
  * use bb_default_login_shell and following defines.
  * If you change LIBBB_DEFAULT_LOGIN_SHELL,
  * don't forget to change increment constant. */
 #define LIBBB_DEFAULT_LOGIN_SHELL  "-/bin/sh"
-extern const char bb_default_login_shell[];
+extern const char bb_default_login_shell[] ALIGN1;
 /* "/bin/sh" */
 #define DEFAULT_SHELL              (bb_default_login_shell+1)
 /* "sh" */
@@ -1792,7 +1821,7 @@ extern const char bb_default_login_shell[];
 # define VC_4 "/dev/vc/4"
 # define VC_5 "/dev/vc/5"
 # define VC_FORMAT "/dev/vc/%d"
-# define LOOP_FORMAT "/dev/loop/%d"
+# define LOOP_FORMAT "/dev/loop/%u"
 # define LOOP_NAMESIZE (sizeof("/dev/loop/") + sizeof(int)*3 + 1)
 # define LOOP_NAME "/dev/loop/"
 # define FB_0 "/dev/fb/0"
@@ -1805,7 +1834,7 @@ extern const char bb_default_login_shell[];
 # define VC_4 "/dev/tty4"
 # define VC_5 "/dev/tty5"
 # define VC_FORMAT "/dev/tty%d"
-# define LOOP_FORMAT "/dev/loop%d"
+# define LOOP_FORMAT "/dev/loop%u"
 # define LOOP_NAMESIZE (sizeof("/dev/loop") + sizeof(int)*3 + 1)
 # define LOOP_NAME "/dev/loop"
 # define FB_0 "/dev/fb0"

@@ -410,7 +410,7 @@ arith_apply(arith_state_t *math_state, operator op, var_or_num_t *numstack, var_
 				return "exponent less than 0";
 			c = 1;
 			while (--right_side_val >= 0)
-			    c *= rez;
+				c *= rez;
 			rez = c;
 		}
 		else if (right_side_val == 0)
@@ -493,18 +493,6 @@ static const char op_tokens[] ALIGN1 = {
 	0
 };
 #define ptr_to_rparen (&op_tokens[sizeof(op_tokens)-7])
-
-const char* FAST_FUNC
-endofname(const char *name)
-{
-	if (!is_name(*name))
-		return name;
-	while (*++name) {
-		if (!is_in_name(*name))
-			break;
-	}
-	return name;
-}
 
 static arith_t FAST_FUNC
 evaluate_string(arith_state_t *math_state, const char *expr)

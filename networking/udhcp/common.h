@@ -14,7 +14,7 @@
 
 PUSH_AND_SET_FUNCTION_VISIBILITY_TO_HIDDEN
 
-extern const uint8_t MAC_BCAST_ADDR[6]; /* six all-ones */
+extern const uint8_t MAC_BCAST_ADDR[6] ALIGN2; /* six all-ones */
 
 
 /*** DHCP packet ***/
@@ -149,8 +149,9 @@ enum {
 //#define DHCP_DOMAIN_SEARCH    0x77 /* RFC 3397. set of ASCIZ string, DNS-style compressed */
 //#define DHCP_SIP_SERVERS      0x78 /* RFC 3361. flag byte, then: 0: domain names, 1: IP addrs */
 //#define DHCP_STATIC_ROUTES    0x79 /* RFC 3442. (mask,ip,router) tuples */
-#define DHCP_VLAN_ID            0x84 /* 802.1P VLAN ID */
-#define DHCP_VLAN_PRIORITY      0x85 /* 802.1Q VLAN priority */
+//#define DHCP_VLAN_ID          0x84 /* 802.1P VLAN ID */
+//#define DHCP_VLAN_PRIORITY    0x85 /* 802.1Q VLAN priority */
+//#define DHCP_PXE_CONF_FILE    0xd1 /* RFC 5071 Configuration File */
 //#define DHCP_MS_STATIC_ROUTES 0xf9 /* Microsoft's pre-RFC 3442 code for 0x79? */
 //#define DHCP_WPAD             0xfc /* MSIE's Web Proxy Autodiscovery Protocol */
 #define DHCP_END                0xff
@@ -187,8 +188,8 @@ struct option_set {
 };
 
 extern const struct dhcp_optflag dhcp_optflags[];
-extern const char dhcp_option_strings[];
-extern const uint8_t dhcp_option_lengths[];
+extern const char dhcp_option_strings[] ALIGN1;
+extern const uint8_t dhcp_option_lengths[] ALIGN1;
 
 unsigned FAST_FUNC udhcp_option_idx(const char *name);
 

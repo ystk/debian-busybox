@@ -23,9 +23,6 @@
  * resulting sed_cmd_t structures are appended to a linked list
  * (G.sed_cmd_head/G.sed_cmd_tail).
  *
- * add_input_file() adds a FILE* to the list of input files.  We need to
- * know all input sources ahead of time to find the last line for the $ match.
- *
  * process_files() does actual sedding, reading data lines from each input FILE*
  * (which could be stdin) and applying the sed command list (sed_cmd_head) to
  * each of the resulting lines.
@@ -53,18 +50,32 @@
  * Todo:
  * - Create a wrapper around regex to make libc's regex conform with sed
  *
- * Reference http://www.opengroup.org/onlinepubs/007904975/utilities/sed.html
+ * Reference
+ * http://www.opengroup.org/onlinepubs/007904975/utilities/sed.html
+ * http://pubs.opengroup.org/onlinepubs/9699919799/utilities/sed.html
  */
 
+//config:config SED
+//config:	bool "sed"
+//config:	default y
+//config:	help
+//config:	  sed is used to perform text transformations on a file
+//config:	  or input from a pipeline.
+
+//kbuild:lib-$(CONFIG_SED) += sed.o
+
+//applet:IF_SED(APPLET(sed, BB_DIR_BIN, BB_SUID_DROP))
+
 //usage:#define sed_trivial_usage
-//usage:       "[-inr] [-f FILE]... [-e CMD]... [FILE]...\n"
-//usage:       "or: sed [-inr] CMD [FILE]..."
+//usage:       "[-inrE] [-f FILE]... [-e CMD]... [FILE]...\n"
+//usage:       "or: sed [-inrE] CMD [FILE]..."
 //usage:#define sed_full_usage "\n\n"
 //usage:       "	-e CMD	Add CMD to sed commands to be executed"
 //usage:     "\n	-f FILE	Add FILE contents to sed commands to be executed"
-//usage:     "\n	-i	Edit files in-place (else sends result to stdout)"
+//usage:     "\n	-i[SFX]	Edit files in-place (otherwise sends to stdout)"
+//usage:     "\n		Optionally back files up, appending SFX"
 //usage:     "\n	-n	Suppress automatic printing of pattern space"
-//usage:     "\n	-r	Use extended regex syntax"
+//usage:     "\n	-r,-E	Use extended regex syntax"
 //usage:     "\n"
 //usage:     "\nIf no -e or -f, the first non-option argument is the sed command string."
 //usage:     "\nRemaining arguments are input files (stdin if none)."
@@ -121,12 +132,15 @@ static const char semicolon_whitespace[] ALIGN1 = "; \n\r\t\v";
 struct globals {
 	/* options */
 	int be_quiet, regex_type;
+
 	FILE *nonstdout;
 	char *outname, *hold_space;
+	smallint exitcode;
 
-	/* List of input files */
-	int input_file_count, current_input_file;
-	FILE **input_file_list;
+	/* list of input files */
+	int current_input_file, last_input_file;
+	char **input_file_list;
+	FILE *current_fp;
 
 	regmatch_t regmatch[10];
 	regex_t *previous_regex_ptr;
@@ -134,7 +148,7 @@ struct globals {
 	/* linked list of sed commands */
 	sed_cmd_t *sed_cmd_head, **sed_cmd_tail;
 
-	/* Linked list of append lines */
+	/* linked list of append lines */
 	llist_t *append_head;
 
 	char *add_cmd_line;
@@ -186,8 +200,8 @@ static void sed_free_and_close_stuff(void)
 
 	free(G.hold_space);
 
-	while (G.current_input_file < G.input_file_count)
-		fclose(G.input_file_list[G.current_input_file++]);
+	if (G.current_fp)
+		fclose(G.current_fp);
 }
 #else
 void sed_free_and_close_stuff(void);
@@ -327,7 +341,7 @@ static int get_address(const char *my_str, int *linenum, regex_t ** regex)
 		next = index_of_next_unescaped_regexp_delim(delimiter, ++pos);
 		temp = copy_parsing_escapes(pos, next);
 		*regex = xzalloc(sizeof(regex_t));
-		xregcomp(*regex, temp, G.regex_type|REG_NEWLINE);
+		xregcomp(*regex, temp, G.regex_type);
 		free(temp);
 		/* Move position to next character after last delimiter */
 		pos += (next+1);
@@ -367,7 +381,7 @@ static int parse_subst_cmd(sed_cmd_t *sed_cmd, const char *substr)
 
 	/*
 	 * A substitution command should look something like this:
-	 *    s/match/replace/ #gIpw
+	 *    s/match/replace/ #giIpw
 	 *    ||     |        |||
 	 *    mandatory       optional
 	 */
@@ -415,6 +429,7 @@ static int parse_subst_cmd(sed_cmd_t *sed_cmd, const char *substr)
 			break;
 		}
 		/* Ignore case (gnu exension) */
+		case 'i':
 		case 'I':
 			cflags |= REG_ICASE;
 			break;
@@ -491,8 +506,10 @@ static const char *parse_cmd_args(sed_cmd_t *sed_cmd, const char *cmdstr)
 	}
 	/* handle edit cmds: (a)ppend, (i)nsert, and (c)hange */
 	else if (idx <= IDX_c) { /* a,i,c */
-		if ((sed_cmd->end_line || sed_cmd->end_match) && sed_cmd->cmd != 'c')
-			bb_error_msg_and_die("only a beginning address can be specified for edit commands");
+		if (idx < IDX_c) { /* a,i */
+			if (sed_cmd->end_line || sed_cmd->end_match)
+				bb_error_msg_and_die("command '%c' uses only one address", sed_cmd->cmd);
+		}
 		for (;;) {
 			if (*cmdstr == '\n' || *cmdstr == '\\') {
 				cmdstr++;
@@ -509,8 +526,10 @@ static const char *parse_cmd_args(sed_cmd_t *sed_cmd, const char *cmdstr)
 	}
 	/* handle file cmds: (r)ead */
 	else if (idx <= IDX_w) { /* r,w */
-		if (sed_cmd->end_line || sed_cmd->end_match)
-			bb_error_msg_and_die("command only uses one address");
+		if (idx < IDX_w) { /* r */
+			if (sed_cmd->end_line || sed_cmd->end_match)
+				bb_error_msg_and_die("command '%c' uses only one address", sed_cmd->cmd);
+		}
 		cmdstr += parse_file_cmd(/*sed_cmd,*/ cmdstr, &sed_cmd->string);
 		if (sed_cmd->cmd == 'w') {
 			sed_cmd->sw_file = xfopen_for_write(sed_cmd->string);
@@ -642,6 +661,12 @@ static void add_cmd(const char *cmdstr)
 		sed_cmd->cmd = *cmdstr++;
 		cmdstr = parse_cmd_args(sed_cmd, cmdstr);
 
+		/* cmdstr now points past args.
+		 * GNU sed requires a separator, if there are more commands,
+		 * else it complains "char N: extra characters after command".
+		 * Example: "sed 'p;d'". We also allow "sed 'pd'".
+		 */
+
 		/* Add the command to the command array */
 		*G.sed_cmd_tail = sed_cmd;
 		G.sed_cmd_tail = &sed_cmd->next;
@@ -672,7 +697,7 @@ static void do_subst_w_backrefs(char *line, char *replace)
 
 	/* go through the replacement string */
 	for (i = 0; replace[i]; i++) {
-		/* if we find a backreference (\1, \2, etc.) print the backref'ed * text */
+		/* if we find a backreference (\1, \2, etc.) print the backref'ed text */
 		if (replace[i] == '\\') {
 			unsigned backref = replace[++i] - '0';
 			if (backref <= 9) {
@@ -706,8 +731,10 @@ static void do_subst_w_backrefs(char *line, char *replace)
 static int do_subst_command(sed_cmd_t *sed_cmd, char **line_p)
 {
 	char *line = *line_p;
-	int altered = 0;
 	unsigned match_count = 0;
+	bool altered = 0;
+	bool prev_match_empty = 1;
+	bool tried_at_eol = 0;
 	regex_t *current_regex;
 
 	current_regex = sed_cmd->sub_match;
@@ -734,50 +761,75 @@ static int do_subst_command(sed_cmd_t *sed_cmd, char **line_p)
 
 	/* Now loop through, substituting for matches */
 	do {
+		int start = G.regmatch[0].rm_so;
+		int end = G.regmatch[0].rm_eo;
 		int i;
-
-		/* Work around bug in glibc regexec, demonstrated by:
-		 * echo " a.b" | busybox sed 's [^ .]* x g'
-		 * The match_count check is so not to break
-		 * echo "hi" | busybox sed 's/^/!/g'
-		 */
-		if (!G.regmatch[0].rm_so && !G.regmatch[0].rm_eo && match_count) {
-			pipe_putc(*line++);
-			continue;
-		}
 
 		match_count++;
 
 		/* If we aren't interested in this match, output old line to
-		   end of match and continue */
+		 * end of match and continue */
 		if (sed_cmd->which_match
 		 && (sed_cmd->which_match != match_count)
 		) {
-			for (i = 0; i < G.regmatch[0].rm_eo; i++)
+			for (i = 0; i < end; i++)
 				pipe_putc(*line++);
-			continue;
+			/* Null match? Print one more char */
+			if (start == end && *line)
+				pipe_putc(*line++);
+			goto next;
 		}
 
-		/* print everything before the match */
-		for (i = 0; i < G.regmatch[0].rm_so; i++)
+		/* Print everything before the match */
+		for (i = 0; i < start; i++)
 			pipe_putc(line[i]);
 
-		/* then print the substitution string */
-		do_subst_w_backrefs(line, sed_cmd->string);
+		/* Then print the substitution string,
+		 * unless we just matched empty string after non-empty one.
+		 * Example: string "cccd", pattern "c*", repl "R":
+		 * result is "RdR", not "RRdR": first match "ccc",
+		 * second is "" before "d", third is "" after "d".
+		 * Second match is NOT replaced!
+		 */
+		if (prev_match_empty || start != 0 || start != end) {
+			//dbg("%d %d %d", prev_match_empty, start, end);
+			dbg("inserting replacement at %d in '%s'", start, line);
+			do_subst_w_backrefs(line, sed_cmd->string);
+			/* Flag that something has changed */
+			altered = 1;
+		} else {
+			dbg("NOT inserting replacement at %d in '%s'", start, line);
+		}
 
-		/* advance past the match */
-		line += G.regmatch[0].rm_eo;
-		/* flag that something has changed */
-		altered++;
+		/* If matched string is empty (f.e. "c*" pattern),
+		 * copy verbatim one char after it before attempting more matches
+		 */
+		prev_match_empty = (start == end);
+		if (prev_match_empty) {
+			if (!line[end]) {
+				tried_at_eol = 1;
+			} else {
+				pipe_putc(line[end]);
+				end++;
+			}
+		}
+
+		/* Advance past the match */
+		dbg("line += %d", end);
+		line += end;
 
 		/* if we're not doing this globally, get out now */
 		if (sed_cmd->which_match != 0)
 			break;
+ next:
+		/* Exit if we are at EOL and already tried matching at it */
+		if (*line == '\0') {
+			if (tried_at_eol)
+				break;
+			tried_at_eol = 1;
+		}
 
-		if (*line == '\0')
-			break;
-
-//maybe (G.regmatch[0].rm_eo ? REG_NOTBOL : 0) instead of unconditional REG_NOTBOL?
+//maybe (end ? REG_NOTBOL : 0) instead of unconditional REG_NOTBOL?
 	} while (regexec(current_regex, line, 10, G.regmatch, REG_NOTBOL) != REG_NOMATCH);
 
 	/* Copy rest of string into output pipeline */
@@ -808,81 +860,7 @@ static sed_cmd_t *branch_to(char *label)
 
 static void append(char *s)
 {
-	llist_add_to_end(&G.append_head, xstrdup(s));
-}
-
-static void flush_append(void)
-{
-	char *data;
-
-	/* Output appended lines. */
-	while ((data = (char *)llist_pop(&G.append_head))) {
-		fprintf(G.nonstdout, "%s\n", data);
-		free(data);
-	}
-}
-
-static void add_input_file(FILE *file)
-{
-	G.input_file_list = xrealloc_vector(G.input_file_list, 2, G.input_file_count);
-	G.input_file_list[G.input_file_count++] = file;
-}
-
-/* Get next line of input from G.input_file_list, flushing append buffer and
- * noting if we ran out of files without a newline on the last line we read.
- */
-enum {
-	NO_EOL_CHAR = 1,
-	LAST_IS_NUL = 2,
-};
-static char *get_next_line(char *gets_char)
-{
-	char *temp = NULL;
-	int len;
-	char gc;
-
-	flush_append();
-
-	/* will be returned if last line in the file
-	 * doesn't end with either '\n' or '\0' */
-	gc = NO_EOL_CHAR;
-	while (G.current_input_file < G.input_file_count) {
-		FILE *fp = G.input_file_list[G.current_input_file];
-		/* Read line up to a newline or NUL byte, inclusive,
-		 * return malloc'ed char[]. length of the chunk read
-		 * is stored in len. NULL if EOF/error */
-		temp = bb_get_chunk_from_file(fp, &len);
-		if (temp) {
-			/* len > 0 here, it's ok to do temp[len-1] */
-			char c = temp[len-1];
-			if (c == '\n' || c == '\0') {
-				temp[len-1] = '\0';
-				gc = c;
-				if (c == '\0') {
-					int ch = fgetc(fp);
-					if (ch != EOF)
-						ungetc(ch, fp);
-					else
-						gc = LAST_IS_NUL;
-				}
-			}
-			/* else we put NO_EOL_CHAR into *gets_char */
-			break;
-
-		/* NB: I had the idea of peeking next file(s) and returning
-		 * NO_EOL_CHAR only if it is the *last* non-empty
-		 * input file. But there is a case where this won't work:
-		 * file1: "a woo\nb woo"
-		 * file2: "c no\nd no"
-		 * sed -ne 's/woo/bang/p' input1 input2 => "a bang\nb bang"
-		 * (note: *no* newline after "b bang"!) */
-		}
-		/* Close this file and advance to next one */
-		fclose(fp);
-		G.current_input_file++;
-	}
-	*gets_char = gc;
-	return temp;
+	llist_add_to_end(&G.append_head, s);
 }
 
 /* Output line of text. */
@@ -899,6 +877,10 @@ static char *get_next_line(char *gets_char)
  * bbox:
  * 00000000  74 68 7a 6e 67 79 61 67  61 7a 6e                 |thzngyagazn|
  */
+enum {
+	NO_EOL_CHAR = 1,
+	LAST_IS_NUL = 2,
+};
 static void puts_maybe_newline(char *s, FILE *file, char *last_puts_char, char last_gets_char)
 {
 	char lpc = *last_puts_char;
@@ -933,6 +915,82 @@ static void puts_maybe_newline(char *s, FILE *file, char *last_puts_char, char l
 	*last_puts_char = lpc;
 }
 
+static void flush_append(char *last_puts_char, char last_gets_char)
+{
+	char *data;
+
+	/* Output appended lines. */
+	while ((data = (char *)llist_pop(&G.append_head))) {
+		puts_maybe_newline(data, G.nonstdout, last_puts_char, last_gets_char);
+		free(data);
+	}
+}
+
+/* Get next line of input from G.input_file_list, flushing append buffer and
+ * noting if we ran out of files without a newline on the last line we read.
+ */
+static char *get_next_line(char *gets_char, char *last_puts_char, char last_gets_char)
+{
+	char *temp = NULL;
+	int len;
+	char gc;
+
+	flush_append(last_puts_char, last_gets_char);
+
+	/* will be returned if last line in the file
+	 * doesn't end with either '\n' or '\0' */
+	gc = NO_EOL_CHAR;
+	for (; G.current_input_file <= G.last_input_file; G.current_input_file++) {
+		FILE *fp = G.current_fp;
+		if (!fp) {
+			const char *path = G.input_file_list[G.current_input_file];
+			fp = stdin;
+			if (path != bb_msg_standard_input) {
+				fp = fopen_or_warn(path, "r");
+				if (!fp) {
+					G.exitcode = EXIT_FAILURE;
+					continue;
+				}
+			}
+			G.current_fp = fp;
+		}
+		/* Read line up to a newline or NUL byte, inclusive,
+		 * return malloc'ed char[]. length of the chunk read
+		 * is stored in len. NULL if EOF/error */
+		temp = bb_get_chunk_from_file(fp, &len);
+		if (temp) {
+			/* len > 0 here, it's ok to do temp[len-1] */
+			char c = temp[len-1];
+			if (c == '\n' || c == '\0') {
+				temp[len-1] = '\0';
+				gc = c;
+				if (c == '\0') {
+					int ch = fgetc(fp);
+					if (ch != EOF)
+						ungetc(ch, fp);
+					else
+						gc = LAST_IS_NUL;
+				}
+			}
+			/* else we put NO_EOL_CHAR into *gets_char */
+			break;
+
+		/* NB: I had the idea of peeking next file(s) and returning
+		 * NO_EOL_CHAR only if it is the *last* non-empty
+		 * input file. But there is a case where this won't work:
+		 * file1: "a woo\nb woo"
+		 * file2: "c no\nd no"
+		 * sed -ne 's/woo/bang/p' input1 input2 => "a bang\nb bang"
+		 * (note: *no* newline after "b bang"!) */
+		}
+		/* Close this file and advance to next one */
+		fclose_if_not_stdin(fp);
+		G.current_fp = NULL;
+	}
+	*gets_char = gc;
+	return temp;
+}
+
 #define sed_puts(s, n) (puts_maybe_newline(s, G.nonstdout, &last_puts_char, n))
 
 static int beg_match(sed_cmd_t *sed_cmd, const char *pattern_space)
@@ -955,7 +1013,7 @@ static void process_files(void)
 	int substituted;
 
 	/* Prime the pump */
-	next_line = get_next_line(&next_gets_char);
+	next_line = get_next_line(&next_gets_char, &last_puts_char, '\n' /*last_gets_char*/);
 
 	/* Go through every line in each file */
  again:
@@ -969,7 +1027,7 @@ static void process_files(void)
 
 	/* Read one line in advance so we can act on the last line,
 	 * the '$' address */
-	next_line = get_next_line(&next_gets_char);
+	next_line = get_next_line(&next_gets_char, &last_puts_char, last_gets_char);
 	linenum++;
 
 	/* For every line, go through all the commands */
@@ -1043,7 +1101,7 @@ static void process_files(void)
 				/* or does this line matches our last address regex */
 				|| (sed_cmd->end_match && old_matched
 				     && (regexec(sed_cmd->end_match,
-				                 pattern_space, 0, NULL, 0) == 0)
+						pattern_space, 0, NULL, 0) == 0)
 				)
 			);
 		}
@@ -1126,7 +1184,7 @@ static void process_files(void)
 		case 's':
 			if (!do_subst_command(sed_cmd, &pattern_space))
 				break;
-			dbg("do_subst_command succeeeded:'%s'", pattern_space);
+			dbg("do_subst_command succeeded:'%s'", pattern_space);
 			substituted |= 1;
 
 			/* handle p option */
@@ -1141,7 +1199,7 @@ static void process_files(void)
 
 		/* Append line to linked list to be printed later */
 		case 'a':
-			append(sed_cmd->string);
+			append(xstrdup(sed_cmd->string));
 			break;
 
 		/* Insert text before this line */
@@ -1163,11 +1221,10 @@ static void process_files(void)
 			rfile = fopen_for_read(sed_cmd->string);
 			if (rfile) {
 				char *line;
-
 				while ((line = xmalloc_fgetline(rfile))
 						!= NULL)
 					append(line);
-				xprint_and_close_file(rfile);
+				fclose(rfile);
 			}
 
 			break;
@@ -1188,7 +1245,7 @@ static void process_files(void)
 				free(pattern_space);
 				pattern_space = next_line;
 				last_gets_char = next_gets_char;
-				next_line = get_next_line(&next_gets_char);
+				next_line = get_next_line(&next_gets_char, &last_puts_char, last_gets_char);
 				substituted = 0;
 				linenum++;
 				break;
@@ -1224,7 +1281,7 @@ static void process_files(void)
 			pattern_space[len] = '\n';
 			strcpy(pattern_space + len+1, next_line);
 			last_gets_char = next_gets_char;
-			next_line = get_next_line(&next_gets_char);
+			next_line = get_next_line(&next_gets_char, &last_puts_char, last_gets_char);
 			linenum++;
 			break;
 		}
@@ -1328,7 +1385,7 @@ static void process_files(void)
 
 	/* Delete and such jump here. */
  discard_line:
-	flush_append();
+	flush_append(&last_puts_char, last_gets_char);
 	free(pattern_space);
 
 	goto again;
@@ -1337,7 +1394,7 @@ static void process_files(void)
 /* It is possible to have a command line argument with embedded
  * newlines.  This counts as multiple command lines.
  * However, newline can be escaped: 's/e/z\<newline>z/'
- * We check for this.
+ * add_cmd() handles this.
  */
 
 static void add_cmd_block(char *cmdstr)
@@ -1347,22 +1404,8 @@ static void add_cmd_block(char *cmdstr)
 	cmdstr = sv = xstrdup(cmdstr);
 	do {
 		eol = strchr(cmdstr, '\n');
- next:
-		if (eol) {
-			/* Count preceding slashes */
-			int slashes = 0;
-			char *sl = eol;
-
-			while (sl != cmdstr && *--sl == '\\')
-				slashes++;
-			/* Odd number of preceding slashes - newline is escaped */
-			if (slashes & 1) {
-				overlapping_strcpy(eol - 1, eol);
-				eol = strchr(eol, '\n');
-				goto next;
-			}
+		if (eol)
 			*eol = '\0';
-		}
 		add_cmd(cmdstr);
 		cmdstr = eol + 1;
 	} while (eol);
@@ -1374,7 +1417,18 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 {
 	unsigned opt;
 	llist_t *opt_e, *opt_f;
-	int status = EXIT_SUCCESS;
+	char *opt_i;
+
+#if ENABLE_LONG_OPTS
+	static const char sed_longopts[] ALIGN1 =
+		/* name             has_arg             short */
+		"in-place\0"        Optional_argument   "i"
+		"regexp-extended\0" No_argument         "r"
+		"quiet\0"           No_argument         "n"
+		"silent\0"          No_argument         "n"
+		"expression\0"      Required_argument   "e"
+		"file\0"            Required_argument   "f";
+#endif
 
 	INIT_G();
 
@@ -1382,25 +1436,35 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 	if (ENABLE_FEATURE_CLEAN_UP) atexit(sed_free_and_close_stuff);
 
 	/* Lie to autoconf when it starts asking stupid questions. */
-	if (argv[1] && !strcmp(argv[1], "--version")) {
+	if (argv[1] && strcmp(argv[1], "--version") == 0) {
 		puts("This is not GNU sed version 4.0");
 		return 0;
 	}
 
 	/* do normal option parsing */
 	opt_e = opt_f = NULL;
+	opt_i = NULL;
 	opt_complementary = "e::f::" /* can occur multiple times */
 	                    "nn"; /* count -n */
+
+	IF_LONG_OPTS(applet_long_options = sed_longopts);
+
 	/* -i must be first, to match OPT_in_place definition */
-	opt = getopt32(argv, "irne:f:", &opt_e, &opt_f,
+	/* -E is a synonym of -r:
+	 * GNU sed 4.2.1 mentions it in neither --help
+	 * nor manpage, but does recognize it.
+	 */
+	opt = getopt32(argv, "i::rEne:f:", &opt_i, &opt_e, &opt_f,
 			    &G.be_quiet); /* counter for -n */
 	//argc -= optind;
 	argv += optind;
 	if (opt & OPT_in_place) { // -i
 		atexit(cleanup_outname);
 	}
-	if (opt & 0x2) G.regex_type |= REG_EXTENDED; // -r
-	//if (opt & 0x4) G.be_quiet++; // -n
+	if (opt & (2|4))
+		G.regex_type |= REG_EXTENDED; // -r or -E
+	//if (opt & 8)
+	//	G.be_quiet++; // -n (implemented with a counter instead)
 	while (opt_e) { // -e
 		add_cmd_block(llist_pop(&opt_e));
 	}
@@ -1415,7 +1479,7 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 		fclose(cmdfile);
 	}
 	/* if we didn't get a pattern from -e or -f, use argv[0] */
-	if (!(opt & 0x18)) {
+	if (!(opt & 0x30)) {
 		if (!*argv)
 			bb_show_usage();
 		add_cmd_block(*argv++);
@@ -1429,42 +1493,38 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 	/* argv[0..(argc-1)] should be names of file to process. If no
 	 * files were specified or '-' was specified, take input from stdin.
 	 * Otherwise, we process all the files specified. */
-	if (argv[0] == NULL) {
+	G.input_file_list = argv;
+	if (!argv[0]) {
 		if (opt & OPT_in_place)
 			bb_error_msg_and_die(bb_msg_requires_arg, "-i");
-		add_input_file(stdin);
+		argv[0] = (char*)bb_msg_standard_input;
+		/* G.last_input_file = 0; - already is */
 	} else {
-		int i;
+		goto start;
 
-		for (i = 0; argv[i]; i++) {
+		for (; *argv; argv++) {
 			struct stat statbuf;
 			int nonstdoutfd;
-			FILE *file;
 			sed_cmd_t *sed_cmd;
 
-			if (LONE_DASH(argv[i]) && !(opt & OPT_in_place)) {
-				add_input_file(stdin);
-				process_files();
-				continue;
-			}
-			file = fopen_or_warn(argv[i], "r");
-			if (!file) {
-				status = EXIT_FAILURE;
-				continue;
-			}
-			add_input_file(file);
+			G.last_input_file++;
+ start:
 			if (!(opt & OPT_in_place)) {
+				if (LONE_DASH(*argv)) {
+					*argv = (char*)bb_msg_standard_input;
+					process_files();
+				}
 				continue;
 			}
 
 			/* -i: process each FILE separately: */
 
-			G.outname = xasprintf("%sXXXXXX", argv[i]);
+			G.outname = xasprintf("%sXXXXXX", *argv);
 			nonstdoutfd = xmkstemp(G.outname);
 			G.nonstdout = xfdopen_for_write(nonstdoutfd);
 
 			/* Set permissions/owner of output file */
-			fstat(fileno(file), &statbuf);
+			stat(*argv, &statbuf);
 			/* chmod'ing AFTER chown would preserve suid/sgid bits,
 			 * but GNU sed 4.2.1 does not preserve them either */
 			fchmod(nonstdoutfd, statbuf.st_mode);
@@ -1474,8 +1534,13 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 			fclose(G.nonstdout);
 			G.nonstdout = stdout;
 
-			/* unlink(argv[i]); */
-			xrename(G.outname, argv[i]);
+			if (opt_i) {
+				char *backupname = xasprintf("%s%s", *argv, opt_i);
+				xrename(*argv, backupname);
+				free(backupname);
+			}
+			/* else unlink(*argv); - rename below does this */
+			xrename(G.outname, *argv); //TODO: rollback backup on error?
 			free(G.outname);
 			G.outname = NULL;
 
@@ -1485,12 +1550,13 @@ int sed_main(int argc UNUSED_PARAM, char **argv)
 			}
 		}
 		/* Here, to handle "sed 'cmds' nonexistent_file" case we did:
-		 * if (G.current_input_file >= G.input_file_count)
-		 *	return status;
+		 * if (G.current_input_file[G.current_input_file] == NULL)
+		 *	return G.exitcode;
 		 * but it's not needed since process_files() works correctly
 		 * in this case too. */
 	}
+
 	process_files();
 
-	return status;
+	return G.exitcode;
 }

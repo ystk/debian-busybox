@@ -293,8 +293,8 @@ static unsigned fill_bitbuffer(STATE_PARAM unsigned bitbuffer, unsigned *current
  * m:	maximum lookup bits, returns actual
  */
 static int huft_build(const unsigned *b, const unsigned n,
-			   const unsigned s, const unsigned short *d,
-			   const unsigned char *e, huft_t **t, unsigned *m)
+			const unsigned s, const unsigned short *d,
+			const unsigned char *e, huft_t **t, unsigned *m)
 {
 	unsigned a;             /* counter for codes of length k */
 	unsigned c[BMAX + 1];   /* bit length count table */
@@ -336,7 +336,7 @@ static int huft_build(const unsigned *b, const unsigned n,
 	}
 
 	/* Find minimum and maximum length, bound *m by those */
-	for (j = 1; (c[j] == 0) && (j <= BMAX); j++)
+	for (j = 1; (j <= BMAX) && (c[j] == 0); j++)
 		continue;
 	k = j; /* minimum code length */
 	for (i = BMAX; (c[i] == 0) && i; i--)

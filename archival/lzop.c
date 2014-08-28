@@ -14,7 +14,7 @@
 
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
@@ -24,6 +24,26 @@
 
    "Minimalized" for busybox by Alain Knaff
 */
+
+//config:config LZOP
+//config:	bool "lzop"
+//config:	default y
+//config:	help
+//config:	  Lzop compression/decompresion.
+//config:
+//config:config LZOP_COMPR_HIGH
+//config:	bool "lzop compression levels 7,8,9 (not very useful)"
+//config:	default n
+//config:	depends on LZOP
+//config:	help
+//config:	  High levels (7,8,9) of lzop compression. These levels
+//config:	  are actually slower than gzip at equivalent compression ratios
+//config:	  and take up 3.2K of code.
+
+//applet:IF_LZOP(APPLET(lzop, BB_DIR_BIN, BB_SUID_DROP))
+//applet:IF_LZOP(APPLET_ODDNAME(lzopcat, lzop, BB_DIR_USR_BIN, BB_SUID_DROP, lzopcat))
+//applet:IF_LZOP(APPLET_ODDNAME(unlzop, lzop, BB_DIR_USR_BIN, BB_SUID_DROP, unlzop))
+//kbuild:lib-$(CONFIG_LZOP) += lzop.o
 
 //usage:#define lzop_trivial_usage
 //usage:       "[-cfvd123456789CF] [FILE]..."
@@ -116,7 +136,7 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 	unsigned nl;
 	unsigned long o_m1_a = 0, o_m1_b = 0, o_m2 = 0, o_m3_a = 0, o_m3_b = 0;
 
-//	  LZO_UNUSED(wrkmem);
+//	LZO_UNUSED(wrkmem);
 
 	*out_len = 0;
 
@@ -346,11 +366,11 @@ static NOINLINE int lzo1x_optimize(uint8_t *in, unsigned in_len,
 	return LZO_E_EOF_NOT_FOUND;
 
  eof_found:
-//	  LZO_UNUSED(o_m1_a); LZO_UNUSED(o_m1_b); LZO_UNUSED(o_m2);
-//	  LZO_UNUSED(o_m3_a); LZO_UNUSED(o_m3_b);
+//	LZO_UNUSED(o_m1_a); LZO_UNUSED(o_m1_b); LZO_UNUSED(o_m2);
+//	LZO_UNUSED(o_m3_a); LZO_UNUSED(o_m3_b);
 	*out_len = pd(op, out);
 	return (ip == ip_end ? LZO_E_OK :
-		   (ip < ip_end	 ? LZO_E_INPUT_NOT_CONSUMED : LZO_E_INPUT_OVERRUN));
+		(ip < ip_end ? LZO_E_INPUT_NOT_CONSUMED : LZO_E_INPUT_OVERRUN));
 }
 
 /**********************************************************************/
@@ -436,25 +456,27 @@ struct globals {
 //#define LZOP_VERSION_STRING     "1.01"
 //#define LZOP_VERSION_DATE       "Apr 27th 2003"
 
-#define OPTION_STRING "cfvdt123456789CF"
+#define OPTION_STRING "cfvqdt123456789CF"
 
+/* Note: must be kept in sync with archival/bbunzip.c */
 enum {
 	OPT_STDOUT      = (1 << 0),
 	OPT_FORCE       = (1 << 1),
 	OPT_VERBOSE     = (1 << 2),
-	OPT_DECOMPRESS  = (1 << 3),
-	OPT_TEST        = (1 << 4),
-	OPT_1           = (1 << 5),
-	OPT_2           = (1 << 6),
-	OPT_3           = (1 << 7),
-	OPT_4           = (1 << 8),
-	OPT_5           = (1 << 9),
-	OPT_6           = (1 << 10),
-	OPT_789         = (7 << 11),
-	OPT_7           = (1 << 11),
-	OPT_8           = (1 << 12),
-	OPT_C           = (1 << 14),
-	OPT_F           = (1 << 15),
+	OPT_QUIET       = (1 << 3),
+	OPT_DECOMPRESS  = (1 << 4),
+	OPT_TEST        = (1 << 5),
+	OPT_1           = (1 << 6),
+	OPT_2           = (1 << 7),
+	OPT_3           = (1 << 8),
+	OPT_4           = (1 << 9),
+	OPT_5           = (1 << 10),
+	OPT_6           = (1 << 11),
+	OPT_789         = (7 << 12),
+	OPT_7           = (1 << 13),
+	OPT_8           = (1 << 14),
+	OPT_C           = (1 << 15),
+	OPT_F           = (1 << 16),
 };
 
 /**********************************************************************/
@@ -1093,7 +1115,7 @@ int lzop_main(int argc UNUSED_PARAM, char **argv)
 	if (applet_name[4] == 'c')
 		option_mask32 |= (OPT_STDOUT | OPT_DECOMPRESS);
 	/* unlzop? */
-	if (applet_name[0] == 'u')
+	if (applet_name[4] == 'o')
 		option_mask32 |= OPT_DECOMPRESS;
 
 	global_crc32_table = crc32_filltable(NULL, 0);
