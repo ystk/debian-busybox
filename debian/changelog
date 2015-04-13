@@ -1,3 +1,22 @@
+busybox (1:1.22.0-9+deb8u1) jessie; urgency=medium
+
+  * Non-maintainer upload.
+  * lzop-add-overflow-check-CVE-2014-4607.patch (Closes: #768945)
+
+ -- Mehdi Dogguy <mehdi@debian.org>  Tue, 17 Feb 2015 18:29:33 +0100
+
+busybox (1:1.22.0-9) unstable; urgency=medium
+
+  * cherry-pick find /BITS patch from upstream (Closes: #760637)
+  * clean-up provides/replaces/conflicts of busybox-syslogd from referencs
+    to klogd/sysklogd/inetutils-syslogd, only keep virtual packages
+    {linux-kernel,system}-log-daemon in there (Closes: #730059)
+  * test for /run/systemd/system in busybox-klogd initscript and exit
+    if present, to not conflict with systemd klogd functions
+  * do not pass extra params to dh_installinit (using dep-based ordering)
+
+ -- Michael Tokarev <mjt@tls.msk.ru>  Tue, 30 Sep 2014 08:50:20 +0400
+
 busybox (1:1.22.0-8) unstable; urgency=medium
 
   * Team upload
@@ -1680,4 +1699,3 @@ busybox (0.45-1) unstable; urgency=low
     (i.e. when libc gets screwed up.)
 
  -- Erik Andersen <andersee@debian.org>  Tue, 27 Jun 2000 12:26:41 -0600
-

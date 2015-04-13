@@ -154,8 +154,8 @@ binary-arch: ${b}/stamp-build
 	dh_install -pbusybox-udeb ${b}/udeb/_install/* /
 
 # busybox-syslogd
-	dh_installinit -pbusybox-syslogd -u"defaults 10 90"
-	dh_installinit -pbusybox-syslogd -u"defaults 11 89" --name=busybox-klogd
+	dh_installinit -pbusybox-syslogd 
+	dh_installinit -pbusybox-syslogd --name=busybox-klogd
 
 ifeq (linux,$(DEB_HOST_ARCH_OS))
 # udhcpc

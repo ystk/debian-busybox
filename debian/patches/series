@@ -6,9 +6,13 @@ testsuite-fix-last-which-change.diff
 libarchive-open_zipped-does-not-need-to-check-extensions.diff
 libbb-open_zipped-should-not-fail-on-non-compressed-files.diff
 zcat:-complain-if-input-is-not-compressed.diff
+lzop-add-overflow-check-CVE-2014-4607.patch
 
 # submitted fixes
 do-not-fail-on-missing-SIGPWR.patch
+
+# cherry-pick from upstream
+find:-support-perm-_BITS.diff
 
 shell-ash-export-HOME.patch
 version.patch
