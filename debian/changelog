@@ -1,3 +1,12 @@
+busybox (1:1.17.1-8skerlet4) unstable; urgency=low
+
+  * Fix setting of tz_minuteswest
+    This fix is backported from upstream commit:
+    589051b56553788546c757a0b38996a1a8c49a11
+    hwclock: fix setting of tz_minuteswest. Closes 5414
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Thu, 21 May 2015 01:59:04 +0900
+
 busybox (1:1.17.1-8skerlet3) unstable; urgency=low
 
   * Fix improper size calclation for OPTION_STRING_HOST

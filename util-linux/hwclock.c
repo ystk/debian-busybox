@@ -91,7 +91,11 @@ static void to_sys_clock(const char **pp_rtcname, int utc)
 	struct timeval tv;
 	struct timezone tz;
 
-	tz.tz_minuteswest = timezone/60 - 60*daylight;
+	tz.tz_minuteswest = timezone/60;
+	/* ^^^ used to also subtract 60*daylight, but it's wrong:
+	 * daylight!=0 means "this timezone has some DST
+	 * during the year", not "DST is in effect now".
+	 */
 	tz.tz_dsttime = 0;
 
 	tv.tv_sec = read_rtc(pp_rtcname, NULL, utc);
@@ -248,6 +252,10 @@ int hwclock_main(int argc UNUSED_PARAM, char **argv)
 		;
 	applet_long_options = hwclock_longopts;
 #endif
+
+	/* Initialize "timezone" (libc global variable) */
+	tzset();
+
 	opt_complementary = "r--ws:w--rs:s--wr:l--u:u--l";
 	opt = getopt32(argv, "lurswf:", &rtcname);
 
