@@ -1,3 +1,12 @@
+busybox (1:1.17.1-8skerlet5) unstable; urgency=low
+
+  * Fix mkdir on 64-bit platforms
+    This fix is backported from upstream commit:
+    af36ba206f7cf0eef77a82af741766a2d03c51ad
+    mkdir: fix permissions on 64-bit platforms
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Tue, 26 May 2015 10:40:38 +0900
+
 busybox (1:1.17.1-8skerlet4) unstable; urgency=low
 
   * Fix setting of tz_minuteswest
