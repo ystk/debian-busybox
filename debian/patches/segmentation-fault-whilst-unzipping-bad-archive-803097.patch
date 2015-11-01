@@ -1,0 +1,95 @@
+Description: Fix segmentation fault while unzipping bad archive
+Bug-Debian: #803097
+Forwarded: not-needed
+Author: Denys Vlasenko <vda.linux@googlemail.com>
+Origin: vendor, http://git.busybox.net/busybox/commit/?id=1de25a6e87e0e627aa34298105a3d17c60a1f44e
+
+--- a/archival/libunarchive/decompress_unzip.c.orig	2015-10-31 04:30:52.560065416 +0000
++++ b/archival/libunarchive/decompress_unzip.c	2015-10-31 04:31:11.120212775 +0000
+@@ -305,11 +305,12 @@
+ 	unsigned i;             /* counter, current code */
+ 	unsigned j;             /* counter */
+ 	int k;                  /* number of bits in current code */
+-	unsigned *p;            /* pointer into c[], b[], or v[] */
++	const unsigned *p;      /* pointer into c[], b[], or v[] */
+ 	huft_t *q;              /* points to current table */
+ 	huft_t r;               /* table entry for structure assignment */
+ 	huft_t *u[BMAX];        /* table stack */
+ 	unsigned v[N_MAX];      /* values in order of bit length */
++	unsigned v_end;
+ 	int ws[BMAX + 1];       /* bits decoded stack */
+ 	int w;                  /* bits decoded */
+ 	unsigned x[BMAX + 1];   /* bit offsets, then code stack */
+@@ -324,7 +325,7 @@
+ 
+ 	/* Generate counts for each bit length */
+ 	memset(c, 0, sizeof(c));
+-	p = (unsigned *) b; /* cast allows us to reuse p for pointing to b */
++	p = b;
+ 	i = n;
+ 	do {
+ 		c[*p]++; /* assume all entries <= BMAX */
+@@ -365,12 +366,14 @@
+ 	}
+ 
+ 	/* Make a table of values in order of bit lengths */
+-	p = (unsigned *) b;
++	p = b;
+ 	i = 0;
++	v_end = 0;
+ 	do {
+ 		j = *p++;
+ 		if (j != 0) {
+ 			v[x[j]++] = i;
++			v_end = x[j];
+ 		}
+ 	} while (++i < n);
+ 
+@@ -432,7 +435,7 @@
+ 
+ 			/* set up table entry in r */
+ 			r.b = (unsigned char) (k - w);
+-			if (p >= v + n) {
++			if (p >= v + v_end) { // Was "if (p >= v + n)" but v[] can be shorter!
+ 				r.e = 99; /* out of values--invalid code */
+ 			} else if (*p < s) {
+ 				r.e = (unsigned char) (*p < 256 ? 16 : 15);	/* 256 is EOB code */
+--- a/testsuite/unzip.tests.orig	2015-10-31 04:31:03.588152979 +0000
++++ b/testsuite/unzip.tests	2015-10-31 04:31:18.652272572 +0000
+@@ -7,7 +7,7 @@
+ 
+ . ./testing.sh
+ 
+-# testing "test name" "options" "expected result" "file input" "stdin"
++# testing "test name" "commands" "expected result" "file input" "stdin"
+ #   file input will be file called "input"
+ #   test can create a file "actual" instead of writing to stdout
+ 
+@@ -30,6 +30,27 @@
+ rmdir foo
+ rm foo.zip
+ 
++# File containing some damaged encrypted stream
++testing "unzip (bad archive)" "uudecode; unzip bad.zip 2>&1; echo \$?" \
++"Archive:  bad.zip
++  inflating: ]3j½r«IK-%Ix
++unzip: inflate error
++1
++" \
++"" "\
++begin-base64 644 bad.zip
++UEsDBBQAAgkIAAAAIQA5AAAANwAAADwAAAAQAAcAXTNqwr1ywqtJGxJLLSVJ
++eCkBD0AdKBk8JzQsIj01JC0/ORJQSwMEFAECCAAAAAAhADoAAAAPAAAANgAA
++AAwAAQASw73Ct1DCokohPXQiNjoUNTUiHRwgLT4WHlBLAQIQABQAAggIAAAA
++oQA5AAAANwAAADwAAAAQQAcADAAAACwAMgCAAAAAAABdM2rCvXLCq0kbEkst
++JUl4KQEPQB0oGSY4Cz4QNgEnJSYIPVBLAQIAABQAAggAAAAAIQAqAAAADwAA
++BDYAAAAMAAEADQAAADIADQAAAEEAAAASw73Ct1DKokohPXQiNzA+FAI1HCcW
++NzITNFBLBQUKAC4JAA04Cw0EOhZQSwUGAQAABAIAAgCZAAAAeQAAAAIALhM=
++====
++"
++
++rm *
++
+ # Clean up scratch directory.
+ 
+ cd ..
