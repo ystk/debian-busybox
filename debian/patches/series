@@ -33,3 +33,7 @@ swaponoff-FreeBSD-support.patch
 init-console-CRTSCTS.patch
 
 segmentation-fault-whilst-unzipping-bad-archive-803097.patch
+
+# skerlet
+CVE-2011-2716.pacth
+fix-improper-size-calc-for-OPTION_STRING_HOST.patch

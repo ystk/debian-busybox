@@ -1,8 +1,57 @@
+busybox (1:1.17.1-8+deb6u11skerlet5) squeeze-lts; urgency=low
+
+  [ Skerlet ]
+  * Same as the following changes
+    1:1.17.1-8skerlet1
+    1:1.17.1-8skerlet2
+    1:1.17.1-8skerlet3
+    1:1.17.1-8skerlet4
+    1:1.17.1-8skerlet5
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Wed, 18 May 2016 17:44:18 +0900
+
 busybox (1:1.17.1-8+deb6u11) squeeze-lts; urgency=high
 
   * Fix segmentation fault while unzipping bad archive (Closes: #803097)
 
  -- Chris Lamb <lamby@debian.org>  Sat, 31 Oct 2015 04:39:59 +0000
+
+busybox (1:1.17.1-8skerlet5) unstable; urgency=low
+
+  * Fix mkdir on 64-bit platforms
+    This fix is backported from upstream commit:
+    af36ba206f7cf0eef77a82af741766a2d03c51ad
+    mkdir: fix permissions on 64-bit platforms
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Tue, 26 May 2015 10:40:38 +0900
+
+busybox (1:1.17.1-8skerlet4) unstable; urgency=low
+
+  * Fix setting of tz_minuteswest
+    This fix is backported from upstream commit:
+    589051b56553788546c757a0b38996a1a8c49a11
+    hwclock: fix setting of tz_minuteswest. Closes 5414
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Thu, 21 May 2015 01:59:04 +0900
+
+busybox (1:1.17.1-8skerlet3) unstable; urgency=low
+
+  * Fix improper size calclation for OPTION_STRING_HOST
+    This fix is also required to fix CVE-2011-2716.
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Fri, 19 Jul 2013 01:32:35 +0900
+
+busybox (1:1.17.1-8skerlet2) unstable; urgency=low
+
+  * Fix CVE-2011-2716.
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Tue, 11 Jun 2013 14:39:34 +0900
+
+busybox (1:1.17.1-8skerlet1) unstable; urgency=low
+
+  * Fix klogd temination. This patch is applied in 1.18 upstream.
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Thu, 26 Apr 2012 01:49:42 +0000
 
 busybox (1:1.17.1-8) unstable; urgency=low
 
