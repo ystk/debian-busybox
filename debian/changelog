@@ -1,3 +1,15 @@
+busybox (1:1.17.1-8+deb6u11skerlet6) squeeze-lts; urgency=low
+
+  [ Skerlet ]
+  * Fix recent breakage caused by 1.17.1-8+deb6u11
+    segmentation-fault-whilst-unzipping-bad-archive-803097.patch was added
+    to fix a segmentation fault in the gunzip applet. However,
+    it introduced a new issue that made the unzipping of some files fail.
+    gunzip-fix-recent-breakage.patch which is backported from upstream
+    fixes this breakage
+
+ -- Skerlet Project Team <skerlet@swc.toshiba.co.jp>  Tue, 14 Jun 2016 16:05:14 +0900
+
 busybox (1:1.17.1-8+deb6u11skerlet5) squeeze-lts; urgency=low
 
   [ Skerlet ]
