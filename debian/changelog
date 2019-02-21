@@ -1,3 +1,60 @@
+busybox (1:1.22.0-9+deb8u4) jessie-security; urgency=high
+
+  * Non-maintainer upload the LTS team.
+  * Regression update for CVE-2011-5325: It was found that the patch to prevent
+    the exploitation of CVE-2011-5325 is too strict in case of cpio archives.
+    This update restores the old behavior.
+
+ -- Markus Koschany <apo@debian.org>  Fri, 03 Aug 2018 05:43:46 +0200
+
+busybox (1:1.22.0-9+deb8u3) jessie-security; urgency=high
+
+  * Non-maintainer upload by the LTS team.
+  * Regression update for CVE-2015-9261: Decompressing gzip archives works as
+    intended again.
+
+ -- Markus Koschany <apo@debian.org>  Thu, 02 Aug 2018 01:40:03 +0200
+
+busybox (1:1.22.0-9+deb8u2) jessie-security; urgency=high
+
+  * Non-maintainer upload by the LTS team.
+  * Fix CVE-2011-5325:
+    A path traversal vulnerability was found in Busybox implementation of tar.
+    tar will extract a symlink that points outside of the current working
+    directory and then follow that symlink when extracting other files. This
+    allows for a directory traversal attack when extracting untrusted tarballs.
+  * Fix CVE-2014-9645:
+    The add_probe function in modutils/modprobe.c in BusyBox allows local users
+    to bypass intended restrictions on loading kernel modules via a / (slash)
+    character in a module name, as demonstrated by an "ifconfig /usbserial up"
+    command or a "mount -t /snd_pcm none /" command.
+  * Fix CVE-2016-2147:
+    Integer overflow in the DHCP client (udhcpc) in BusyBox allows remote
+    attackers to cause a denial of service (crash) via a malformed
+    RFC1035-encoded domain name, which triggers an out-of-bounds heap write.
+  * Fix CVE-2016-2148:
+    Heap-based buffer overflow in the DHCP client (udhcpc) in BusyBox allows
+    remote attackers to have unspecified impact via vectors involving
+    OPTION_6RD parsing.
+  * Fix CVE-2017-15873:
+    The get_next_block function in archival/libarchive/decompress_bunzip2.c in
+    BusyBox has an Integer Overflow that may lead to a write access violation.
+  * Fix CVE-2017-16544:
+    In the add_match function in libbb/lineedit.c in BusyBox, the tab
+    autocomplete feature of the shell, used to get a list of filenames in a
+    directory, does not sanitize filenames and results in executing any escape
+    sequence in the terminal. This could potentially result in code execution,
+    arbitrary file writes, or other attacks.
+  * Fix CVE-2018-1000517:
+    BusyBox project BusyBox wget contains a Buffer Overflow vulnerability in
+    Busybox wget that can result in heap buffer overflow. This attack appear to
+    be exploitable via network connectivity.
+  * CVE-2015-9261:
+    Unziping a specially crafted zip file results in a computation of an
+    invalid pointer and a crash reading an invalid address.
+
+ -- Markus Koschany <apo@debian.org>  Fri, 27 Jul 2018 00:53:58 +0200
+
 busybox (1:1.22.0-9+deb8u1) jessie; urgency=medium
 
   * Non-maintainer upload.
