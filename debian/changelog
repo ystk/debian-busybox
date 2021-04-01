@@ -1,3 +1,13 @@
+busybox (1:1.22.0-9+deb8u5) jessie-security; urgency=high
+
+  * Non-maintainer upload the ELTS team.
+  * Fix CVE-2021-28831:
+    decompress_gunzip.c in BusyBox mishandles the error bit on
+    the huft_build result pointer, with a resultant invalid free or
+    segmentation fault, via malformed gzip data.
+
+ -- Markus Koschany <apo@debian.org>  Thu, 01 Apr 2021 19:58:16 +0200
+
 busybox (1:1.22.0-9+deb8u4) jessie-security; urgency=high
 
   * Non-maintainer upload the LTS team.
