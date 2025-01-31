@@ -1,7 +1,21 @@
+busybox (1:1.22.0-9+deb8u6) jessie-security; urgency=high
+
+  * Non-maintainer upload by the ELTS Security Team.
+  * Backport patches for
+      CVE-2021-42378, CVE-2021-42379, CVE-2021-42380,
+      CVE-2021-42381, CVE-2021-42382, CVE-2021-42384, CVE-2021-42385,
+      CVE-2021-42386 (Closes: #999567),
+      CVE-2022-48174 (Closes: #1059049)
+  * Backport patch for CVE-2023-42364. This patch also covers
+    CVE-2023-42365 (Closes: #1059051, #1059052)
+  * Backport patch for CVE-2018-20679 (Closes: #918846)
+
+ -- Tobias Frost <tobi@debian.org>  Fri, 31 Jan 2025 07:57:45 +0100
+
 busybox (1:1.22.0-9+deb8u5) jessie-security; urgency=high
 
   * Non-maintainer upload the ELTS team.
-  * Fix CVE-2021-28831:
+  * Fix CVE-2021-28831: (Closes: #985674)
     decompress_gunzip.c in BusyBox mishandles the error bit on
     the huft_build result pointer, with a resultant invalid free or
     segmentation fault, via malformed gzip data.
